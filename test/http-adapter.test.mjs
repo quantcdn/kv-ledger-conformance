@@ -57,7 +57,7 @@ test('createAdapter: name, shapes, real clock, capabilities and no control hooks
   assert.equal(typeof adapter.kvStore.KVError, 'function');
 });
 
-test('createStore: KV_create with format 2 and a kvc- name, then KV_show until ready; identity is org and name', async () => {
+test('createStore: KV_create with format 2 and a kvc- name, then KV_show until ready; identity is org and the store id', async () => {
   const adapter = await makeAdapter();
   const mark = api.log.length;
   const { storeId, identity } = await adapter.admin.createStore({ format: 2 });
@@ -70,7 +70,7 @@ test('createStore: KV_create with format 2 and a kvc- name, then KV_show until r
   assert.equal(create.authorization, `Bearer ${TOKEN}`);
   assert.equal(show.method, 'GET');
   assert.equal(show.path, `${KV_PATH}/${storeId}`);
-  assert.deepEqual(identity, { org: 'o-1', store: create.body.name });
+  assert.deepEqual(identity, { org: 'o-1', store: storeId });
   const second = await adapter.admin.createStore({ format: 2 });
   assert.notEqual(second.storeId, storeId);
   assert.notEqual(second.identity.store, identity.store);

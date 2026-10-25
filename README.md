@@ -461,8 +461,9 @@ Gaps. The public API cannot express all edge behaviour:
 9. The automatic idempotency key of an append goes to the API as an explicit `idempotencyKey`.
 10. There is no fault injection, archive control or clock control. The `proof-timing` cases use real time.
 
-`identity.store` is the store name that the adapter sends at create. If the platform uses another value in ledger
-instance names, the genesis checks of the ledger cases fail.
+`identity.store` is the store id that the create returns (for example `myorg-myproject-mystore`). The platform names a
+ledger instance `{org}/{store id}/{collection}#{shard}`, so the genesis checks of the ledger cases use the store id, not
+the name that the adapter sends at create. `dispose` also names stores by their id.
 
 ## Tags and groups
 

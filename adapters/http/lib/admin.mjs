@@ -75,7 +75,8 @@ export function createAdmin({ api, org, stores, clock, pollMs = 5000, log = writ
     if (created.body.status !== 'ready') {
       await pollUntil(`/${enc(storeId)}`, (b) => b?.status === undefined || b.status === 'ready', STORE_READY_MS, 'the store');
     }
-    return { storeId, identity: { org, store: name } };
+    // The platform names a ledger instance by the store id (org-project-name), not the short name.
+    return { storeId, identity: { org, store: storeId } };
   }
 
   async function declareIndex(storeId, def, { wait = true } = {}) {
@@ -98,16 +99,16 @@ export function createAdmin({ api, org, stores, clock, pollMs = 5000, log = writ
   }
 
   // Deletes every store this adapter created. A store that cannot be deleted (for example one with a ledger) is kept
-  // and named in the summary and the log line; dispose never throws for it.
+  // and named (by its store id, as the platform names it) in the summary and the log line; dispose never throws for it.
   async function dispose() {
     const deleted = [];
     const kept = [];
-    for (const [storeId, { name }] of stores) {
+    for (const storeId of stores.keys()) {
       try {
         await send('DELETE', `/${enc(storeId)}`, { query: { force: true } });
-        deleted.push(name);
+        deleted.push(storeId);
       } catch (err) {
-        kept.push({ store: name, code: err?.code ?? 'UNKNOWN' });
+        kept.push({ store: storeId, code: err?.code ?? 'UNKNOWN' });
       }
     }
     stores.clear();
