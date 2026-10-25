@@ -1,0 +1,188 @@
+{
+  "v": 1,
+  "description": "Quant KV ledger v1 test vectors. Strings are UTF-8; hashes are lowercase hex SHA-256.",
+  "org": "acme",
+  "store": "audit",
+  "collection": "ai-use:agency-42",
+  "shard": "03",
+  "instance": "acme/audit/ai-use:agency-42#03",
+  "definition": {
+    "v": 1,
+    "name": "aiUse",
+    "collection": "ai-use:*",
+    "chains": 4,
+    "retentionDays": 2555,
+    "lockMode": "governance",
+    "personalFields": [
+      "requesterName"
+    ],
+    "subjectField": "requesterId",
+    "anchor": {
+      "type": "none"
+    },
+    "createdAt": "2026-10-16T00:00:00.000Z"
+  },
+  "definitionJcs": "{\"anchor\":{\"type\":\"none\"},\"chains\":4,\"collection\":\"ai-use:*\",\"createdAt\":\"2026-10-16T00:00:00.000Z\",\"lockMode\":\"governance\",\"name\":\"aiUse\",\"personalFields\":[\"requesterName\"],\"retentionDays\":2555,\"subjectField\":\"requesterId\",\"v\":1}",
+  "definitionHash": "c4a505c8f93d5d6da23dc30d3a9c4274cd7f3a9135f756b5a3317c50109514b3",
+  "genesisPrevHash": "90e1d5e16e174ad7ad87dbf0409a6b7f558866a2da8fcc8c55eb57b4b6d571db",
+  "entries": [
+    {
+      "seq": 1,
+      "id": "01M5104A000000000000000000-03",
+      "at": 1792108800000,
+      "stored": "{\"type\":\"plaintext\",\"value\":{\"requesterId\":\"u-17\",\"model\":\"claude-opus-5-5\",\"purpose\":\"triage\",\"requesterName\":{\"$enc\":\"AAAA\",\"iv\":\"BBBBBBBBBBBBBBBB\",\"tag\":\"CCCCCCCCCCCCCCCCCCCCCC==\"}}}",
+      "valueHash": "60811c92ac5b9daae41744e2752a525fe10f4b485aec6878cba561f8505b8744",
+      "prevHash": "90e1d5e16e174ad7ad87dbf0409a6b7f558866a2da8fcc8c55eb57b4b6d571db",
+      "hash": "13af6943007a581b06e21c07201d8619cda0936ffed496ca8801509666867bad"
+    },
+    {
+      "seq": 2,
+      "id": "01M5104A000000000000000001-03",
+      "at": 1792108800000,
+      "stored": "{\"type\":\"plaintext\",\"value\":{\"requesterId\":\"u-18\",\"model\":\"nova-pro\",\"purpose\":\"summary\"}}",
+      "valueHash": "c68ad0b48cbb20d8f648c924adab483bd3f36eccc60215372bc8b453f9e7261b",
+      "prevHash": "13af6943007a581b06e21c07201d8619cda0936ffed496ca8801509666867bad",
+      "hash": "e52500b4881c6a4a4e720618afcdefeafd60789afb6057e81a2d5f7f1ae25daa"
+    },
+    {
+      "seq": 3,
+      "id": "01M5104A017ZZZZZZZZZZZZZZZ-03",
+      "at": 1792108800001,
+      "stored": "{\"type\":\"plaintext\",\"value\":{\"requesterId\":\"u-17\",\"model\":\"claude-opus-5-5\",\"purpose\":\"täst ✓\"}}",
+      "valueHash": "e6ba3549f5b28528c6ea83078db489476952cac2db8409f419a5cefe827c7d3e",
+      "prevHash": "e52500b4881c6a4a4e720618afcdefeafd60789afb6057e81a2d5f7f1ae25daa",
+      "hash": "ae8da56c382789455e5730ce8b112d5344d02d07fbcb96d76124120296f8e50b"
+    },
+    {
+      "seq": 4,
+      "id": "01M5104EW8ABCDEFGHJKMNPQRS-03",
+      "at": 1792108805000,
+      "stored": "{\"type\":\"plaintext\",\"value\":{\"$event\":\"shred\",\"subjectId\":\"u-17\",\"reason\":\"request\",\"authority\":\"RA 2023/00456 class 12\",\"requestedBy\":\"officer-1\"}}",
+      "valueHash": "af10334d01c231731106cb9be5ed9ba1ecaa6a3b96383cf3014ef2c51596529c",
+      "prevHash": "ae8da56c382789455e5730ce8b112d5344d02d07fbcb96d76124120296f8e50b",
+      "hash": "34d57c76dc32fb58c0a795e29ecab5865c2742e8c23d104e3acc155ac03482b5"
+    },
+    {
+      "seq": 5,
+      "id": "01M5104EW8ABCDEFGHJKMNPQRT-03",
+      "at": 1792108805000,
+      "stored": "{\"type\":\"plaintext\",\"value\":{\"requesterId\":\"u-19\",\"model\":\"nova-lite\",\"purpose\":\"triage\"}}",
+      "valueHash": "4453743c3ee1674a0bce120712ce041c0900548e33625655d9b5ec19a347251b",
+      "prevHash": "34d57c76dc32fb58c0a795e29ecab5865c2742e8c23d104e3acc155ac03482b5",
+      "hash": "3791454d7dc564ef5c5a6cb952c9bffe3ea1d2ea072f682df5a4f7d5350086af"
+    }
+  ],
+  "merkle": [
+    {
+      "n": 1,
+      "root": "6fd1d042549fa2f219e64563e853785ded0fbba16ad9356a093e29b36ea7516b"
+    },
+    {
+      "n": 2,
+      "root": "fb64d07692daeadf15052c66b5e86588ce31f7cd7265599bfd9d1d29254b0431"
+    },
+    {
+      "n": 3,
+      "root": "a501a7a0d4e6c31f19ef51b8cd705b018615165c019c89b4e933440832304066"
+    },
+    {
+      "n": 4,
+      "root": "33356f99c2264d3c92ffe433e27853250c25b50b57eb401b90e06ae54b08ef63"
+    },
+    {
+      "n": 5,
+      "root": "7a315c92bfbec26ff29ea7df42393a2f3c4be51229c571b9c0464b6604b822ed"
+    }
+  ],
+  "proofs": [
+    {
+      "n": 5,
+      "index": 0,
+      "leafHash": "13af6943007a581b06e21c07201d8619cda0936ffed496ca8801509666867bad",
+      "auditPath": [
+        "4cf75292b78efc7049856bbdbe52c7478c89912d4e9e715d223d85c6dfff9bb5",
+        "d2e53140fb2a28dcd94fe3e2326192c188756258ae45e5000b801616e5978575",
+        "2826ca6a9b908f34b5b01cc0cbbb02b37658711f92f27ffd4e5318926cedfa98"
+      ],
+      "root": "7a315c92bfbec26ff29ea7df42393a2f3c4be51229c571b9c0464b6604b822ed"
+    },
+    {
+      "n": 5,
+      "index": 2,
+      "leafHash": "ae8da56c382789455e5730ce8b112d5344d02d07fbcb96d76124120296f8e50b",
+      "auditPath": [
+        "8c4ceea58d2e1c136aa66cff3c633ce67513ed5f50d72e1ff68e71508dfff3a7",
+        "fb64d07692daeadf15052c66b5e86588ce31f7cd7265599bfd9d1d29254b0431",
+        "2826ca6a9b908f34b5b01cc0cbbb02b37658711f92f27ffd4e5318926cedfa98"
+      ],
+      "root": "7a315c92bfbec26ff29ea7df42393a2f3c4be51229c571b9c0464b6604b822ed"
+    },
+    {
+      "n": 5,
+      "index": 4,
+      "leafHash": "3791454d7dc564ef5c5a6cb952c9bffe3ea1d2ea072f682df5a4f7d5350086af",
+      "auditPath": [
+        "33356f99c2264d3c92ffe433e27853250c25b50b57eb401b90e06ae54b08ef63"
+      ],
+      "root": "7a315c92bfbec26ff29ea7df42393a2f3c4be51229c571b9c0464b6604b822ed"
+    }
+  ],
+  "personal": {
+    "keyHex": "0101010101010101010101010101010101010101010101010101010101010101",
+    "ivBase64": "AgICAgICAgICAgIC",
+    "aad": "acme/audit/ai-use:agency-42/01M5104A000000000000000000-03/requesterName",
+    "plaintextJson": "\"A. Person\"",
+    "envelope": {
+      "$enc": "JZfnaRoys468op4=",
+      "iv": "AgICAgICAgICAgIC",
+      "tag": "DdTn8bM05u2XF33T/B+eZg=="
+    }
+  },
+  "digestGenesisPrevHash": "7eb31f3af39940e2a34662255c4de63c43cfcb1c5f7019f1fe6e386180a85d9c",
+  "sourceChain": {
+    "description": "Provenance (source): entry 1 was written before provenance existed and has no source; entries 2-4 carry source as the last field of the stored envelope, so the entry hash covers it.",
+    "collection": "ai-use:agency-43",
+    "shard": "00",
+    "instance": "acme/audit/ai-use:agency-43#00",
+    "genesisPrevHash": "78f30ee90144c1e2acf005c38479b81a83f93061aa7a2a9ace5dc2c446c525d3",
+    "entries": [
+      {
+        "seq": 1,
+        "id": "01M5104A000000000000000001-00",
+        "at": 1792108800001,
+        "stored": "{\"type\":\"plaintext\",\"value\":{\"requesterId\":\"u-17\",\"model\":\"claude-opus-5-5\",\"purpose\":\"triage\"}}",
+        "valueHash": "3257de4c92e3eb178cc82f889bcb348489704d58d8592a1d89f0ca183eeba1c3",
+        "prevHash": "78f30ee90144c1e2acf005c38479b81a83f93061aa7a2a9ace5dc2c446c525d3",
+        "hash": "60686baea8be34a382325e45e68e934638817f8d04643d85d602e16b6a11ee8d"
+      },
+      {
+        "seq": 2,
+        "id": "01M5104A000000000000000002-00",
+        "at": 1792108800002,
+        "stored": "{\"type\":\"plaintext\",\"value\":{\"requesterId\":\"u-17\",\"model\":\"claude-opus-5-5\",\"purpose\":\"summary\"},\"source\":{\"type\":\"dashboard\",\"principal\":\"1234\"}}",
+        "valueHash": "dee0b547fb5ee1392eddb4d568a861aedeb780419c1b4a6dcbcfc64028828895",
+        "prevHash": "60686baea8be34a382325e45e68e934638817f8d04643d85d602e16b6a11ee8d",
+        "hash": "34e3d0fd0dfd4d77f1430553c7f876da29fc7b496a446dd6bbdf0aeec70a3a68"
+      },
+      {
+        "seq": 3,
+        "id": "01M5104A000000000000000003-00",
+        "at": 1792108800003,
+        "stored": "{\"type\":\"plaintext\",\"value\":{\"requesterId\":\"u-18\",\"model\":\"claude-opus-5-5\",\"purpose\":\"triage\"},\"source\":{\"type\":\"edge\",\"principal\":\"acme/gov-ai/0b6f5c1e-8a3d-4f7e-9b1a-2c4d6e8f0a1b\"}}",
+        "valueHash": "fafd0c8236dce9ebd299888b44327b8acfaae7168baaa16ca25513f3e79c55b4",
+        "prevHash": "34e3d0fd0dfd4d77f1430553c7f876da29fc7b496a446dd6bbdf0aeec70a3a68",
+        "hash": "e0b648218039f0b5a58de5d64ec94d6b5d3346a43b5679024ed394bd1900c500"
+      },
+      {
+        "seq": 4,
+        "id": "01M5104A000000000000000004-00",
+        "at": 1792108800004,
+        "stored": "{\"type\":\"plaintext\",\"value\":{\"$event\":\"shred\",\"subjectId\":\"u-18\",\"reason\":\"Erasure request\",\"authority\":\"Privacy Act 1988 APP 13\",\"requestedBy\":\"officer-1\"},\"source\":{\"type\":\"platform\",\"principal\":\"quant-ledger\"}}",
+        "valueHash": "3ce44ccda6575657cf318f565c85666de77fa0cec54398a2abbc92b670a64db7",
+        "prevHash": "e0b648218039f0b5a58de5d64ec94d6b5d3346a43b5679024ed394bd1900c500",
+        "hash": "510612c691ee0bc54d4f27e0c5783d13702c7942d57df112fc3cca6bc1b41a10"
+      }
+    ],
+    "merkleRoot": "c5399fc84db6d89f986b9e924b33b61b9b77ee56b563a055ff0e3bfb540b8de3"
+  }
+}

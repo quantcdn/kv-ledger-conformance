@@ -1,0 +1,140 @@
+{
+  "subjectContract": 1,
+  "description": "Canonicalisation vectors of the ledger subject contract, version 1 (spec section 8). The server canonicalises the subject value; a client never does. Data for implementers: no suite case reads this file.",
+  "rules": [
+    "the value is a string, or a safe integer in its decimal string form; any other type is VALIDATION",
+    "a lone surrogate is VALIDATION",
+    "trim Unicode White_Space at both ends",
+    "normalise to NFC",
+    "with subjectCase fold: toLowerCase, then NFC again",
+    "empty, U+0000-U+001F, U+007F-U+009F, or over LIMITS.ledgerSubjectMaxBytes UTF-8 bytes is VALIDATION"
+  ],
+  "vectors": [
+    {
+      "input": " Alice@Example.COM ",
+      "subjectCase": "exact",
+      "canonical": "Alice@Example.COM",
+      "note": "trim, case kept"
+    },
+    {
+      "input": " Alice@Example.COM ",
+      "subjectCase": "fold",
+      "canonical": "alice@example.com",
+      "note": "trim and fold"
+    },
+    {
+      "input": "é",
+      "subjectCase": "exact",
+      "canonical": "é",
+      "note": "NFC"
+    },
+    {
+      "input": "\ud800",
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "lone surrogate"
+    },
+    {
+      "input": 42,
+      "subjectCase": "exact",
+      "canonical": "42",
+      "note": "safe integer as decimal text"
+    },
+    {
+      "input": -7,
+      "subjectCase": "exact",
+      "canonical": "-7",
+      "note": "negative safe integer"
+    },
+    {
+      "input": 4.5,
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "not an integer"
+    },
+    {
+      "input": 9007199254740992,
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "not a safe integer"
+    },
+    {
+      "input": true,
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "boolean"
+    },
+    {
+      "input": null,
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "null"
+    },
+    {
+      "input": "",
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "empty"
+    },
+    {
+      "input": " \t 　",
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "empty after trim"
+    },
+    {
+      "input": " bob　",
+      "subjectCase": "exact",
+      "canonical": "bob",
+      "note": "Unicode White_Space trimmed"
+    },
+    {
+      "input": "a\u0001b",
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "C0 control"
+    },
+    {
+      "input": "ab",
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "DEL"
+    },
+    {
+      "input": "ab",
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "C1 control"
+    },
+    {
+      "input": "ÉCOLE",
+      "subjectCase": "fold",
+      "canonical": "école",
+      "note": "fold then NFC"
+    },
+    {
+      "input": "ÉCOLE",
+      "subjectCase": "fold",
+      "canonical": "école",
+      "note": "NFC then fold then NFC"
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "subjectCase": "exact",
+      "canonical": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "note": "at the byte limit"
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "over the byte limit"
+    },
+    {
+      "input": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+      "subjectCase": "exact",
+      "error": "VALIDATION",
+      "note": "over the byte limit in UTF-8 bytes (258)"
+    }
+  ]
+}

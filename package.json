@@ -1,0 +1,51 @@
+{
+  "name": "@quantcdn/kv-ledger-conformance",
+  "version": "0.1.0",
+  "description": "Conformance suite and offline verifier for the Quant KV ledger",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "kv-conformance": "run.mjs",
+    "kv-ledger-verify": "verifier/verify.mjs"
+  },
+  "exports": {
+    ".": "./index.mjs",
+    "./verifier": "./verifier/index.mjs",
+    "./vectors/ledger-vectors.json": "./vectors/ledger-vectors.json",
+    "./adapters/reference": "./adapters/reference/index.mjs",
+    "./adapters/http": "./adapters/http/index.mjs",
+    "./adapters/edge-harness": "./adapters/edge-harness/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "run.mjs",
+    "lib/",
+    "cases/",
+    "adapters/",
+    "vectors/",
+    "fixtures/",
+    "verifier/index.mjs",
+    "verifier/verify.mjs",
+    "verifier/lib/",
+    "verifier/README.md",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quantcdn/kv-ledger-conformance.git"
+  },
+  "homepage": "https://github.com/quantcdn/kv-ledger-conformance#readme",
+  "bugs": {
+    "url": "https://github.com/quantcdn/kv-ledger-conformance/issues"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs verifier/test/*.test.mjs"
+  }
+}
