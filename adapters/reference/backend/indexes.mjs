@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 QuantCDN Pty Ltd
-// Indexes of a store: declare and drop, the build state on the injected clock (BUILDING until
-// LIMITS.indexActivationMs after the declaration, or at once with wait), the backfill check at activation, the
+// Indexes of a store: declare and drop, the build state on the injected clock (BUILDING until activationMs
+// after the declaration, or at once with wait or initialState 'ACTIVE'), the backfill check at activation, the
 // rules writes must follow, and reads (lookup, count, list candidates). Index contents are derived from the live
-// items on each read, so lists by index are strongly consistent here.
-// store.indexes: Map name -> { def, activeAt, state: 'BUILDING' | 'ACTIVE' | 'FAILED', error? }.
+// items on each read. Lists by index are strongly consistent when listLagMs is 0: with listLagMs, a list by index
+// leaves out an item for listLagMs after its last write, as the runtime can. getBy and count have no lag.
+// store.indexes: Map name -> { def, activeAt (epoch ms, or null when setIndexState holds the state), state:
+// 'BUILDING' | 'ACTIVE' | 'FAILED', error? }.
 import { LIMITS } from '../../../lib/limits.mjs';
 import { collectionOf, isLive } from './core.mjs';
 import {
@@ -18,7 +20,20 @@ function parse(record) {
   return record.ledger === undefined ? value : { ...value, at: record.ledger.at };
 }
 
-export function createIndexes(core) {
+const INITIAL_STATES = ['BUILDING', 'ACTIVE'];
+const CONTROL_STATES = ['BUILDING', 'ACTIVE', 'FAILED'];
+const isMs = (v) => Number.isSafeInteger(v) && v >= 0;
+
+/** The index settings of the backend: { initialState, activationMs, listLagMs }, checked, with defaults. */
+export function indexSettings(given = {}) {
+  const settings = { initialState: 'BUILDING', activationMs: LIMITS.indexActivationMs, listLagMs: 0, ...given };
+  if (!INITIAL_STATES.includes(settings.initialState)) throw new TypeError("indexes.initialState must be 'BUILDING' or 'ACTIVE'");
+  if (!isMs(settings.activationMs)) throw new TypeError('indexes.activationMs must be an integer of 0 or more');
+  if (!isMs(settings.listLagMs)) throw new TypeError('indexes.listLagMs must be an integer of 0 or more');
+  return settings;
+}
+
+export function createIndexes(core, settings = indexSettings()) {
   const validation = (message, details) => core.error('VALIDATION', message, details);
 
   // Live items in collections the index covers: [{ key, record }].
@@ -54,7 +69,7 @@ export function createIndexes(core) {
 
   // The entry with its state brought up to the clock.
   function refreshed(store, entry) {
-    if (entry.state === 'BUILDING' && core.now() >= entry.activeAt) activate(store, entry);
+    if (entry.state === 'BUILDING' && entry.activeAt !== null && core.now() >= entry.activeAt) activate(store, entry);
     return entry;
   }
 
@@ -72,9 +87,9 @@ export function createIndexes(core) {
     if (problem !== null) throw validation(problem);
     const def = normalized(given);
     checkRoom(store, def);
-    const entry = { def, activeAt: core.now() + LIMITS.indexActivationMs, state: 'BUILDING' };
+    const entry = { def, activeAt: core.now() + settings.activationMs, state: 'BUILDING' };
     store.indexes.set(def.name, entry);
-    if (wait) activate(store, entry);
+    if (wait || settings.initialState === 'ACTIVE') activate(store, entry);
     return { name: def.name, state: entry.state, ...(entry.error ? { error: entry.error } : {}) };
   }
 
@@ -83,6 +98,21 @@ export function createIndexes(core) {
     if (!store.indexes.delete(name)) throw core.error('NOT_FOUND', `no index named ${name}`, { index: name });
     return true;
   }
+
+  // Control: holds the index in the state until the next setIndexState. ACTIVE skips the backfill check.
+  function setIndexState(storeId, name, state) {
+    if (!CONTROL_STATES.includes(state)) throw new TypeError("state must be 'ACTIVE', 'BUILDING' or 'FAILED'");
+    const store = core.needStore(storeId);
+    const entry = store.indexes.get(name);
+    if (entry === undefined) throw core.error('NOT_FOUND', `no index named ${name}`, { index: name });
+    entry.state = state;
+    entry.activeAt = null;
+    delete entry.error;
+    return { name, state };
+  }
+
+  // True when a list by index shows the item: its last write is at least listLagMs ago.
+  const listed = (record) => settings.listLagMs === 0 || record.updatedAt <= core.now() - settings.listLagMs;
 
   /** The ACTIVE index entry for a read; NOT_FOUND or INDEX_NOT_READY otherwise. kind: 'unique' | 'count'. */
   function readable(store, name, kind) {
@@ -112,7 +142,7 @@ export function createIndexes(core) {
     return members(store, def).filter((row) => row.tuple === tuple).length;
   }
 
-  return { declareIndex, dropIndex, lookup, count, members, readable, wantedTuple, refreshed };
+  return { declareIndex, dropIndex, setIndexState, lookup, count, members, readable, wantedTuple, refreshed, listed };
 }
 
 // [applies, the row is in range] for after/before on the sortBy value (or the key without sortBy).
@@ -127,7 +157,7 @@ export function indexCandidates(indexes, store, o) {
   const tuple = indexes.wantedTuple(def, o.equals);
   const bounds = BOUNDS.filter(([name]) => Object.hasOwn(o, name));
   const rows = indexes.members(store, def)
-    .filter((row) => row.tuple === tuple)
+    .filter((row) => row.tuple === tuple && indexes.listed(row.record))
     .map((row) => ({ key: row.key, position: positionOf(def, row.key, row.value) }))
     .filter(({ position }) => bounds.every(([name, inRange]) => inRange(position.missing ? undefined : position.sort, o[name])));
   const direction = o.reverse === true ? -1 : 1;

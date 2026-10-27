@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Storage hook: optional `storage.transaction(async (fresh) => next)`, so that two processes can share one snapshot
+  with a lock, and optional `storage.changed()`, so that reads reload a changed snapshot. Without them, nothing
+  changes.
+- Index settings for the local backend and the reference adapter: `indexes.initialState` (`'BUILDING'` or
+  `'ACTIVE'`), `indexes.activationMs` and `indexes.listLagMs`.
+- `control.setIndexState(storeId, name, 'ACTIVE' | 'BUILDING' | 'FAILED')` on the reference adapter, and
+  `backend.setIndexState`.
+
 ## 0.1.0 (unreleased)
 
 First version. It covers the edge `kvStore` API surface of 2026-10-24 (store handle, iteration, `KVError` class,

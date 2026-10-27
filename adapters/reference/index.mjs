@@ -13,12 +13,14 @@
 //   storage     { load(), save(snapshot) } persistence hook of the backend
 //   keys        { secret, cursor } base64 local keys, proof (PKCS#8 PEM archive signing key); generated when absent
 //   warn        called with a message for each unknown set/delete option (the warn phase); silent when absent
+//   indexes     { initialState, activationMs, listLagMs } index settings of the backend (backend/indexes.mjs)
 import { buildKvStore } from '../../lib/edge-surface.mjs';
 import { createEdgeChecks } from '../../lib/edge-checks.mjs';
 import { createKVErrorClass } from '../../lib/kv-error.mjs';
 import { createVirtualClock } from '../../lib/clock.mjs';
 import { LIMITS } from '../../lib/limits.mjs';
 import { createLocalBackend } from './backend/index.mjs';
+import { indexSettings } from './backend/indexes.mjs';
 import { createEdgeCalls } from '../../lib/edge-calls.mjs';
 
 // An emulator can put the local backend behind its own edge layer.
@@ -27,11 +29,11 @@ export { createLocalBackend };
 const STORE_PREFIX = 'kvc-';
 const ORG = 'local-org';
 
-function capabilitiesOf(clock, budgetRows) {
+function capabilitiesOf(clock, budgetRows, indexes) {
   return {
     virtualClock: clock.virtual === true,
-    eventualIndexLists: false,
-    indexBuildStates: true,
+    eventualIndexLists: indexes.listLagMs > 0,
+    indexBuildStates: indexes.initialState === 'BUILDING',
     proofTiming: true,
     signedProofs: true,
     search: true,
@@ -52,7 +54,7 @@ const highestStoreNumber = (ids) => ids.reduce((max, id) => {
 
 // wait: true resolves when the ledger is ACTIVE; with a virtual clock it also moves the clock to activeAfter.
 async function declareLedger(backend, clock, storeId, def, { wait = true } = {}) {
-  const result = backend.declareLedger(storeId, def, { wait });
+  const result = await backend.declareLedger(storeId, def, { wait });
   const ahead = Date.parse(result.activeAfter) - backend.now();
   if (wait && clock.virtual === true && ahead > 0) await clock.advance(ahead);
   return result;
@@ -64,7 +66,7 @@ function createAdmin(backend, allowed, clock) {
     async createStore({ format = 2 } = {}) {
       counter += 1;
       const storeId = `${STORE_PREFIX}${counter}`;
-      backend.createStore({ id: storeId, format });
+      await backend.createStore({ id: storeId, format });
       allowed.add(storeId);
       return { storeId, identity: { org: ORG, store: storeId } };
     },
@@ -73,12 +75,12 @@ function createAdmin(backend, allowed, clock) {
       return backend.declareIndex(storeId, def, { wait });
     },
     async dropIndex(storeId, name) {
-      backend.dropIndex(storeId, name);
+      await backend.dropIndex(storeId, name);
     },
     // wait (default true): the ledger is ACTIVE when this resolves. wait false: PENDING until activeAfter.
     declareLedger: (storeId, def, options) => declareLedger(backend, clock, storeId, def, options),
     async dropLedger(storeId, name) {
-      backend.dropLedger(storeId, name);
+      await backend.dropLedger(storeId, name);
     },
     // The PEM of the local P-256 key that signs the archive digests (one key for every store).
     async proofPublicKey(storeId) {
@@ -86,7 +88,7 @@ function createAdmin(backend, allowed, clock) {
       return backend.publicKey();
     },
     async dispose() {
-      backend.reset();
+      await backend.reset();
       allowed.clear();
     },
   };
@@ -102,7 +104,11 @@ function createControl(backend) {
     },
     // Archive every unarchived entry of the store now (pending -> archived).
     async advanceArchive(storeId) {
-      backend.archiveNow(storeId);
+      await backend.archiveNow(storeId);
+    },
+    // Hold an index in a state: 'ACTIVE' (no backfill check), 'BUILDING' or 'FAILED'.
+    async setIndexState(storeId, name, state) {
+      return backend.setIndexState(storeId, name, state);
     },
   };
 }
@@ -114,8 +120,9 @@ function checkBudget(budgetRows) {
 export async function createAdapter(options = {}) {
   const { clock = createVirtualClock(), budgetRows = LIMITS.scannedRowsPerPage, seed = 1, storage, keys, warn } = options;
   checkBudget(budgetRows);
+  const indexes = indexSettings(options.indexes);
   const KVError = createKVErrorClass();
-  const backend = createLocalBackend({ clock, KVError, budgetRows, seed, storage, keys, org: ORG });
+  const backend = createLocalBackend({ clock, KVError, budgetRows, seed, storage, keys, indexes, org: ORG });
   const allowed = new Set(backend.storeIds());
   const calls = createEdgeCalls({
     backend, checks: createEdgeChecks(KVError), KVError, isAllowed: (id) => allowed.has(id), warn,
@@ -125,7 +132,7 @@ export async function createAdapter(options = {}) {
     kvStore: buildKvStore(calls, KVError),
     shapes: ['global', 'handle'],
     clock,
-    capabilities: capabilitiesOf(clock, budgetRows),
+    capabilities: capabilitiesOf(clock, budgetRows, indexes),
     admin: createAdmin(backend, allowed, clock),
     control: createControl(backend),
     backend,

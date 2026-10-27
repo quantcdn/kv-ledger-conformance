@@ -319,11 +319,80 @@ const kvStore = buildKvStore(calls, KVError); // give this to the edge function 
 | `clock` | The clock. A virtual clock when absent. The runner gives one. |
 | `seed` | The seed of the ledger shard choice (default 1). |
 | `budgetRows` | Test-only scan budget for each page (default 10,000). At most `limits.shortPagesBudgetMax` (10), `capabilities.shortPages` is true and the `core/iteration/short-pages` case runs. Use `budgetRows: 3`, for example. |
-| `storage` | A persistence hook `{ load(): snapshot \| null, save(snapshot) }`. The backend calls `load` when it starts and `save` after each write. A snapshot is a JSON-safe copy of every store, index, ledger, idempotency record, archive and the clock offset. |
+| `storage` | A persistence hook `{ load(): snapshot \| null, save(snapshot), transaction?, changed? }`. The backend calls `load` when it starts and `save` after each write. A snapshot is a JSON-safe copy of every store, index, ledger, idempotency record, archive and the clock offset. See "Storage hook" below for `transaction` and `changed`. |
 | `keys` | `{ secret, cursor, proof }`: local keys. The adapter makes new keys when absent. |
 | `warn` | Called with a message for each unknown `set` or `delete` option. |
+| `indexes` | Index settings: `{ initialState, activationMs, listLagMs }`. See "Index settings" below. |
 
 The adapter also returns `backend`. `backend.snapshot()` and `backend.restore(snapshot)` save and load the full state.
+
+### Storage hook
+
+The backend does no I/O. The storage hook does the I/O. It has four functions:
+
+| Function | Meaning |
+|---|---|
+| `load()` | Sync. Returns the snapshot, or `null`. The backend calls it at start, and after `changed()` returns `true`. |
+| `save(snapshot)` | Sync. The backend calls it after each write, also after a write that throws. Not used when `transaction` is present. |
+| `transaction(run)` | Optional, async. Each write calls `transaction(async (fresh) => next)`. The hook takes its lock, loads the fresh snapshot (or `null`), calls `run(fresh)`, saves the snapshot that `run` returns, and then releases the lock. |
+| `changed()` | Optional, sync. Each read calls it. When it returns `true`, the backend reloads with `load()`. An mtime check is an example. |
+
+Use `transaction` when two processes share one snapshot, for example two `quant serve` processes on one file. Without
+it, the last process to save overwrites the writes of the other. The lock covers the full snapshot.
+
+> **Caution:** With `transaction`, every write method of the backend returns a promise, and the admin calls do too
+> (`createStore`, `declareIndex`, `dropIndex`, `setIndexState`, `declareLedger`, `reset`). Writes of one backend run in
+> the order of the calls. The edge layer and the adapter already await them. Reads stay synchronous.
+
+An example on a file, for Node:
+
+```js
+import { closeSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+
+function fileStorage(file) {
+  let seen = 0;
+  const load = () => {
+    try {
+      const text = readFileSync(file, 'utf8');
+      seen = statSync(file).mtimeMs;
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  };
+  return {
+    load,
+    changed: () => { try { return statSync(file).mtimeMs !== seen; } catch { return false; } },
+    async transaction(run) {
+      const lock = openSync(`${file}.lock`, 'wx'); // fails when another process holds the lock: retry it
+      try {
+        const next = await run(load());
+        writeFileSync(`${file}.tmp`, JSON.stringify(next));
+        renameSync(`${file}.tmp`, file);
+        seen = statSync(file).mtimeMs;
+      } finally {
+        closeSync(lock);
+        unlinkSync(`${file}.lock`);
+      }
+    },
+  };
+}
+```
+
+### Index settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `initialState` | `'BUILDING'` | `'ACTIVE'` makes a new index ACTIVE at once, with no timer. The backfill check still runs, so an index can be `FAILED`. Use `'ACTIVE'` for local development. |
+| `activationMs` | 75000 | The time an index stays `BUILDING` after its declaration. Only with `initialState: 'BUILDING'`. |
+| `listLagMs` | 0 | A list by index leaves out an item until `listLagMs` after its last write, as the runtime can. `getBy` and `count` have no lag. |
+
+`capabilities.eventualIndexLists` is `true` when `listLagMs` is more than 0. `capabilities.indexBuildStates` is
+`false` with `initialState: 'ACTIVE'`.
+
+`control.setIndexState(storeId, name, state)` (and `backend.setIndexState`) holds an index in a state until the next
+call: `'ACTIVE'` (with no backfill check), `'BUILDING'` or `'FAILED'`. Use it to test how a function handles
+`INDEX_NOT_READY`. It is a hook of the reference adapter only, not part of the adapter contract.
 
 The reference adapter passes every `bytes`, `core`, `ledger` and `proof-timing` case only with a small scan budget
 (`budgetRows` at most 10, for example 3). With the default budget, `core/iteration/short-pages` is skipped. It has

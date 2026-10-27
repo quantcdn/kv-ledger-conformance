@@ -7,13 +7,14 @@
 // Options: clock (required: now()), KVError (the class to throw; a fresh one when absent), budgetRows (scan
 // budget per page), seed (shard choice, for ledgers), org (the org of the identity; 'local-org' by default), keys ({ secret, cursor }: base64 keys;
 // proof: the PKCS#8 PEM of the local P-256 archive signing key; generated when absent),
-// storage ({ load(): snapshot | null, save(snapshot) }: loaded at create, saved after each write).
+// storage ({ load(): snapshot | null, save(snapshot), transaction?, changed? }: see persist.mjs),
+// indexes ({ initialState: 'BUILDING' | 'ACTIVE', activationMs, listLagMs }: see indexes.mjs).
 import { LIMITS } from '../../../lib/limits.mjs';
 import { createKVErrorClass } from '../../../lib/kv-error.mjs';
 import { createCore, newStore } from './core.mjs';
 import { createCursors } from './cursor.mjs';
 import { createFaults } from './faults.mjs';
-import { createIndexes, createWriteRules } from './indexes.mjs';
+import { createIndexes, createWriteRules, indexSettings } from './indexes.mjs';
 import { createArchive } from './archive.mjs';
 import { createSigner } from './archive-sign.mjs';
 import { createAppend } from './ledger-append.mjs';
@@ -21,11 +22,12 @@ import { createLedgerViews } from './ledger-views.mjs';
 import { createLedgers } from './ledgers.mjs';
 import { createQuery } from './query.mjs';
 import { createSealer } from './secret.mjs';
+import { createPersistence } from './persist.mjs';
 import { applySnapshot, takeSnapshot } from './snapshot.mjs';
 import { createTransactions } from './transact.mjs';
 import { createValues } from './values.mjs';
 
-// Each write saves a snapshot afterwards, also when it throws (a lost response after the write).
+// Each write goes through persisted (persist.mjs): it saves afterwards, also when it throws.
 function createWrites(core, values, faults, persisted) {
   const notConditional = (o = {}) => o.ifAbsent === undefined && o.ifVersion === undefined;
   return {
@@ -51,13 +53,15 @@ function createWrites(core, values, faults, persisted) {
   };
 }
 
-function createReads(core, values) {
+function createReads(core, values, refresh) {
   function get(storeId, key) {
+    refresh();
     const store = core.needStore(storeId);
     const record = values.live(store, key);
     return record === undefined ? null : values.view(store, key, record);
   }
   function batchGet(storeId, keys) {
+    refresh();
     const store = core.needStore(storeId);
     const result = keys.map((key) => {
       const record = values.live(store, key);
@@ -70,24 +74,21 @@ function createReads(core, values) {
   return { get, batchGet };
 }
 
-function createIndexCalls(core, values, indexes, save) {
+function createIndexCalls(core, values, indexes, { persisted, refresh }) {
   return {
-    declareIndex(storeId, def, options) {
-      const result = indexes.declareIndex(storeId, def, options);
-      save();
-      return result;
-    },
-    dropIndex(storeId, name) {
-      indexes.dropIndex(storeId, name);
-      save();
-      return true;
-    },
+    declareIndex: (storeId, def, options) => persisted(() => indexes.declareIndex(storeId, def, options)),
+    dropIndex: (storeId, name) => persisted(() => indexes.dropIndex(storeId, name)),
+    setIndexState: (storeId, name, state) => persisted(() => indexes.setIndexState(storeId, name, state)),
     lookup(storeId, index, equals) {
+      refresh();
       const store = core.needStore(storeId);
       const row = indexes.lookup(store, index, equals);
       return row === null ? null : values.view(store, row.key, row.record);
     },
-    count: (storeId, { index, equals } = {}) => indexes.count(core.needStore(storeId), index, equals),
+    count(storeId, { index, equals } = {}) {
+      refresh();
+      return indexes.count(core.needStore(storeId), index, equals);
+    },
   };
 }
 
@@ -106,26 +107,29 @@ function createLedgerCalls(core, ledgers, appends, archive, persisted) {
   };
 }
 
-function createStoreAdmin(core, save) {
+function createStoreAdmin(core, { persisted, refresh }) {
   return {
-    createStore({ id, format = 2 }) {
+    createStore: ({ id, format = 2 }) => persisted(() => {
       if (core.stores.has(id)) throw core.error('VALIDATION', `store ${id} exists`);
       core.stores.set(id, newStore(id, format));
-      save();
       return { id, format };
-    },
-    deleteStore(id) {
+    }),
+    deleteStore: (id) => persisted(() => {
       core.needStore(id);
       core.stores.delete(id);
-      save();
       return true;
+    }),
+    storeIds() {
+      refresh();
+      return [...core.stores.keys()];
     },
-    storeIds: () => [...core.stores.keys()],
-    storeFormat: (id) => core.needStore(id).format,
-    reset() {
+    storeFormat(id) {
+      refresh();
+      return core.needStore(id).format;
+    },
+    reset: () => persisted(() => {
       core.stores.clear();
-      save();
-    },
+    }),
   };
 }
 
@@ -156,19 +160,11 @@ export function createLocalBackend(options = {}) {
   const keyring = createKeyring(core, keys);
 
   const snapshot = () => takeSnapshot(core, keyring.current());
-  const save = () => {
-    if (storage) storage.save(snapshot());
-  };
-  const persisted = (work) => {
-    try {
-      return work();
-    } finally {
-      save();
-    }
-  };
   const restore = (data) => keyring.replace(applySnapshot(core, data));
+  const persistence = createPersistence(storage, { snapshot, restore });
+  const { persisted, refresh } = persistence;
 
-  const indexes = createIndexes(core);
+  const indexes = createIndexes(core, indexSettings(options.indexes));
   const archive = createArchive(core, keyring.signer);
   const ledgers = createLedgers(core, { archive });
   const ledgerViews = createLedgerViews(core);
@@ -179,12 +175,15 @@ export function createLocalBackend(options = {}) {
   const { query } = createQuery(core, { budgetRows, cursors: keyring.cursors, indexes, ledgers, ledgerViews });
 
   const backend = {
-    ...createStoreAdmin(core, save),
-    ...createReads(core, values),
+    ...createStoreAdmin(core, persistence),
+    ...createReads(core, values, refresh),
     ...createWrites(core, values, faults, persisted),
     transact: (storeId, ops, opts) => persisted(() => transact(storeId, ops, opts)),
-    query,
-    ...createIndexCalls(core, values, indexes, save),
+    query(...args) {
+      refresh();
+      return query(...args);
+    },
+    ...createIndexCalls(core, values, indexes, persistence),
     ...createLedgerCalls(core, ledgers, createAppend(core, ledgers, faults), archive, persisted),
     publicKey: () => keyring.publicKey(),
     injectFault: (fault) => faults.inject(fault),
