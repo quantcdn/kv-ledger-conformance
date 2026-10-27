@@ -65,6 +65,19 @@ async function deleteIfVersion(ctx) {
   assert.equal(await ctx.kv.get(key), null);
 }
 
+// The platform gives each version as a ULID: 26 characters of Crockford base32. Clients can check for it.
+const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+async function versionShape({ kv, uniqueKey }) {
+  const key = uniqueKey('shape');
+  const set = await kv.set(key, 1, { ifAbsent: true });
+  assert.match(set.version, ULID, 'set { ifAbsent } version is a ULID');
+  assert.match((await kv.getEntry(key)).version, ULID, 'getEntry version is a ULID');
+  const other = uniqueKey('shape');
+  const result = await kv.atomic().set(other, 2).check(key, set.version).commit();
+  assert.match(result.versions[other], ULID, 'atomic version is a ULID');
+}
+
 async function deleteIfVersionMissing(ctx) {
   const key = ctx.uniqueKey('gone');
   await ctx.kv.set(key, 1);
@@ -81,4 +94,5 @@ export const coreConditionalCases = [
   coreCase('conditional/both-conditions', bothConditions),
   coreCase('conditional/delete-ifVersion', deleteIfVersion),
   coreCase('conditional/delete-ifVersion-missing', deleteIfVersionMissing),
+  coreCase('conditional/version-shape', versionShape),
 ];

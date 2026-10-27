@@ -6,6 +6,10 @@
   with a lock, and optional `storage.changed()`, so that reads reload a changed snapshot. Without `transaction`,
   writes stay synchronous. A failed save puts the memory back to the disk state. `setClock` is now a write (it is
   in the snapshot). `storage` must have `load()` and `save()` or `transaction()`.
+- Parity with the platform (edge-kv 0.1.0-rc.1): item versions are ULIDs (26 characters of Crockford base32,
+  monotonic in one process); the edge checks accept plain objects from another realm (for example a `node:vm`
+  context); the FORBIDDEN message is `Access to KV store <id> is not allowed`. New case
+  `core/conditional/version-shape`.
 - `@quantcdn/edge-kv` (`packages/edge-kv`): the edge `kvStore` layer and the local backend as an npm package, with
   `createLocalKv()` and types.
 - Index settings for the local backend and the reference adapter: `indexes.initialState` (`'BUILDING'` or

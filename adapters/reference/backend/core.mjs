@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 QuantCDN Pty Ltd
 // Shared state of the local backend: stores, server time, versions, store-level errors and the storage hook.
-import { randomBytes } from 'node:crypto';
 import { ERROR_CODES } from '../../../lib/error-contract.mjs';
+import { createUlid } from './ulid.mjs';
 
 /** A store record. archives and digests belong to the simulated archive (archive.mjs). */
 export function newStore(id, format) {
@@ -40,9 +40,11 @@ export function createCore({ clock, KVError, storage, org, seed }) {
     if (store === undefined) throw core.error('STORE_NOT_FOUND', `store ${storeId} does not exist`);
     return store;
   };
+  // A ULID on server time, as the platform gives. versionSeq counts the versions (it is in the snapshot).
+  const ulid = createUlid();
   core.newVersion = () => {
     core.versionSeq += 1;
-    return `${core.now().toString(36)}-${core.versionSeq.toString(36)}-${randomBytes(3).toString('hex')}`;
+    return ulid(core.now());
   };
   return core;
 }

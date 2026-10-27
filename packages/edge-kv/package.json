@@ -1,6 +1,6 @@
 {
   "name": "@quantcdn/edge-kv",
-  "version": "0.1.0-rc.0",
+  "version": "0.1.0-rc.1",
   "description": "The Quant edge kvStore API and a local KV and ledger backend, for local development and emulators",
   "type": "module",
   "license": "Apache-2.0",
