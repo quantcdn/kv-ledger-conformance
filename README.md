@@ -332,17 +332,26 @@ The backend does no I/O. The storage hook does the I/O. It has four functions:
 
 | Function | Meaning |
 |---|---|
-| `load()` | Sync. Returns the snapshot, or `null`. The backend calls it at start, and after `changed()` returns `true`. |
-| `save(snapshot)` | Sync. The backend calls it after each write, also after a write that throws. Not used when `transaction` is present. |
+| `load()` | Sync. Returns the snapshot, or `null`. The backend calls it at start, after `changed()` returns `true`, and after a failed save. `null` keeps the state in memory, and the next save writes it back. |
+| `save(snapshot)` | Sync. The backend calls it after each write, also after a write that throws. Required when `transaction` is absent. Not used when `transaction` is present. |
 | `transaction(run)` | Optional, async. Each write calls `transaction(async (fresh) => next)`. The hook takes its lock, loads the fresh snapshot (or `null`), calls `run(fresh)`, saves the snapshot that `run` returns, and then releases the lock. |
-| `changed()` | Optional, sync. Each read calls it. When it returns `true`, the backend reloads with `load()`. An mtime check is an example. |
+| `changed()` | Optional, sync. Each read calls it, and without `transaction` each write too. When it returns `true`, the backend reloads with `load()`. An mtime check is an example. While a write of this process is in flight, reads do not reload. |
 
 Use `transaction` when two processes share one snapshot, for example two `quant serve` processes on one file. Without
-it, the last process to save overwrites the writes of the other. The lock covers the full snapshot.
+it, two processes that write at the same time can overwrite each other's writes, also with `changed()`. The lock
+covers the full snapshot.
+
+When a save fails (`save` or `transaction` throws after the write ran), the backend puts its memory back to the disk
+state and the write throws the error.
 
 > **Caution:** With `transaction`, every write method of the backend returns a promise, and the admin calls do too
-> (`createStore`, `declareIndex`, `dropIndex`, `setIndexState`, `declareLedger`, `reset`). Writes of one backend run in
-> the order of the calls. The edge layer and the adapter already await them. Reads stay synchronous.
+> (`createStore`, `declareIndex`, `dropIndex`, `setIndexState`, `declareLedger`, `setClock`, `reset`).
+> `ledgerStatus` and `ledgerProof` are writes too, because they can run the archive. Writes of one backend run in
+> the order of the calls. The edge layer and the adapter already await them. The other reads stay synchronous.
+
+> **Caution:** Do not call a backend write from inside `transaction`. The write waits for its own lock, and it
+> never ends. `injectFault` applies to the next call of the operation in the queue, which can be a write that was
+> called before `injectFault`.
 
 An example on a file, for Node:
 
@@ -386,6 +395,9 @@ function fileStorage(file) {
 | `initialState` | `'BUILDING'` | `'ACTIVE'` makes a new index ACTIVE at once, with no timer. The backfill check still runs, so an index can be `FAILED`. Use `'ACTIVE'` for local development. |
 | `activationMs` | 75000 | The time an index stays `BUILDING` after its declaration. Only with `initialState: 'BUILDING'`. |
 | `listLagMs` | 0 | A list by index leaves out an item until `listLagMs` after its last write, as the runtime can. `getBy` and `count` have no lag. |
+
+`listLagMs` is an approximation. A rewritten item leaves the list for `listLagMs` (the runtime can show the old
+version). A delete has no lag.
 
 `capabilities.eventualIndexLists` is `true` when `listLagMs` is more than 0. `capabilities.indexBuildStates` is
 `false` with `initialState: 'ACTIVE'`.

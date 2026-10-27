@@ -8,8 +8,15 @@ export interface Clock {
   now(): number;
 }
 
+export interface RealClock extends Clock {
+  readonly virtual: false;
+  /** Waits ms milliseconds. */
+  advance(ms: number): Promise<void>;
+}
+
 export interface VirtualClock extends Clock {
   readonly virtual: true;
+  /** Moves the clock at once. */
   advance(ms: number): Promise<void>;
   set(ms: number): void;
 }
@@ -20,20 +27,30 @@ export interface Snapshot {
   [field: string]: unknown;
 }
 
-/** The storage hook. The backend does no I/O: the hook does it. */
-export interface Storage {
-  /** Sync. The snapshot, or null. Called at create, and after changed() returns true. */
+interface StorageBase {
+  /** Sync. The snapshot, or null. Called at create, after changed() returns true, and after a failed save. */
   load(): Snapshot | null;
-  /** Sync. Called after each write, also a write that throws. Not used when transaction is present. */
-  save?(snapshot: Snapshot): void;
-  /**
-   * Each write calls transaction(run). Take the lock, load the fresh snapshot (or null), call run, save the
-   * snapshot that run returns, then release the lock. With it, the write methods of the backend return promises.
-   */
-  transaction?(run: (fresh: Snapshot | null) => Promise<Snapshot>): Promise<void>;
-  /** Sync. Each read calls it, and reloads with load() when it returns true (for example an mtime check). */
+  /** Sync. Called before reads (and, without transaction, before writes). true: the backend reloads with load(). */
   changed?(): boolean;
 }
+
+/** Saves after each write, also a write that throws. One process, or several with changed() and no overlap. */
+export interface SaveStorage extends StorageBase {
+  save(snapshot: Snapshot): void;
+}
+
+/**
+ * Each write calls transaction(run). Take the lock, load the fresh snapshot (or null), call run, save the
+ * snapshot that run returns, then release the lock. With it, the backend writes return promises. Do not call a
+ * backend write from inside transaction: it waits for its own lock.
+ */
+export interface TransactionStorage extends StorageBase {
+  transaction(run: (fresh: Snapshot | null) => Promise<Snapshot>): Promise<void>;
+  save?(snapshot: Snapshot): void;
+}
+
+/** The storage hook. The backend does no I/O: the hook does it. */
+export type Storage = SaveStorage | TransactionStorage;
 
 export type IndexState = 'BUILDING' | 'ACTIVE' | 'FAILED';
 
@@ -102,7 +119,8 @@ export interface LocalBackend {
   injectFault(fault: { op: string; when: 'before' | 'after-write' }): void;
   /** Server time: the clock plus the offset that setClock sets. */
   now(): number;
-  setClock(ms: number): void;
+  /** A write: the offset is in the snapshot. */
+  setClock(ms: number): MaybePromise<void>;
   snapshot(): Snapshot;
   restore(snapshot: Snapshot): void;
   [method: string]: unknown;
@@ -123,7 +141,7 @@ export function createLocalKv(options?: LocalKvOptions): {
 
 export function createLocalBackend(options: LocalBackendOptions & { clock: Clock }): LocalBackend;
 export function createKVErrorClass(): KVErrorConstructor;
-export function createRealClock(): Clock;
+export function createRealClock(): RealClock;
 export function createVirtualClock(startMs?: number): VirtualClock;
 
 /** Lower-level parts, for an emulator with its own allow-list. createLocalKv composes them. */
@@ -138,6 +156,12 @@ export function createEdgeCalls(options: {
 export function buildKvStore(calls: unknown, KVError: KVErrorConstructor): KvStore;
 
 export const LIMITS: Readonly<Record<string, unknown>>;
-export const ERROR_CODES: Readonly<Record<string, { status: number | null; retryable: boolean | null; [field: string]: unknown }>>;
+export const ERROR_CODES: Readonly<Record<string, {
+  status: number | null;
+  /** 'varies': read err.retryable (UNAVAILABLE). */
+  retryable: boolean | 'varies' | null;
+  /** The detail fields the error can carry. */
+  details: readonly string[];
+}>>;
 
 export type { KVError };

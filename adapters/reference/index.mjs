@@ -97,7 +97,7 @@ function createAdmin(backend, allowed, clock) {
 function createControl(backend) {
   return {
     async setClock(ms) {
-      backend.setClock(ms);
+      await backend.setClock(ms);
     },
     async injectFault(fault) {
       backend.injectFault(fault);

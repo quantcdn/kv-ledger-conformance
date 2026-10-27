@@ -22,7 +22,8 @@ export const ENTRIES = [
   'adapters/reference/backend/index.mjs',
 ];
 
-const RELATIVE_IMPORT = /\bfrom\s+['"](\.{1,2}\/[^'"]+)['"]/g;
+// from '…', import '…' and import('…') of a relative path.
+const RELATIVE_IMPORT = /\b(?:from|import)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g;
 
 /** Every module the entries import, by relative path from the repository root, sorted. */
 export function moduleClosure(entries = ENTRIES) {

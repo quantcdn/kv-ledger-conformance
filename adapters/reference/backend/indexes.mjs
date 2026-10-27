@@ -26,7 +26,8 @@ const isMs = (v) => Number.isSafeInteger(v) && v >= 0;
 
 /** The index settings of the backend: { initialState, activationMs, listLagMs }, checked, with defaults. */
 export function indexSettings(given = {}) {
-  const settings = { initialState: 'BUILDING', activationMs: LIMITS.indexActivationMs, listLagMs: 0, ...given };
+  const set = Object.fromEntries(Object.entries(given ?? {}).filter(([, value]) => value !== undefined));
+  const settings = { initialState: 'BUILDING', activationMs: LIMITS.indexActivationMs, listLagMs: 0, ...set };
   if (!INITIAL_STATES.includes(settings.initialState)) throw new TypeError("indexes.initialState must be 'BUILDING' or 'ACTIVE'");
   if (!isMs(settings.activationMs)) throw new TypeError('indexes.activationMs must be an integer of 0 or more');
   if (!isMs(settings.listLagMs)) throw new TypeError('indexes.listLagMs must be an integer of 0 or more');

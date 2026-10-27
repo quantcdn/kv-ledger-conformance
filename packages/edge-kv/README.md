@@ -52,16 +52,20 @@ The backend does no I/O. The storage hook does the I/O:
 
 | Function | Meaning |
 |---|---|
-| `load()` | Sync. Returns the snapshot, or `null`. Called at start, and after `changed()` returns `true`. |
-| `save(snapshot)` | Sync. Called after each write, also after a write that throws. Not used when `transaction` is present. |
+| `load()` | Sync. Returns the snapshot, or `null`. Called at start, after `changed()` returns `true`, and after a failed save. `null` keeps the state in memory. |
+| `save(snapshot)` | Sync. Called after each write, also after a write that throws. Required when `transaction` is absent. |
 | `transaction(run)` | Optional, async. Each write calls it. Take the lock, load the fresh snapshot (or `null`), call `run(fresh)`, save the snapshot that `run` returns, then release the lock. |
 | `changed()` | Optional, sync. Each read calls it. When it returns `true`, the backend reloads with `load()`. |
 
-Use `transaction` and `changed` when two processes share one snapshot. Without them, the last process to save
-overwrites the writes of the other process. The lock covers the full snapshot.
+Use `transaction` and `changed` when two processes share one snapshot. Without `transaction`, two processes that
+write at the same time can overwrite each other's writes. The lock covers the full snapshot. When a save fails, the
+backend puts its memory back to the disk state, and the write throws the error.
 
 > **Caution:** With `transaction`, the backend write and admin methods return promises (`createStore`,
-> `declareIndex`, `setIndexState`, `declareLedger` and the others). Always `await` them. Reads stay synchronous.
+> `declareIndex`, `setIndexState`, `declareLedger`, `setClock` and the others). Always `await` them. The
+> `kvStore` methods are async in all modes.
+
+> **Caution:** Do not call a backend write from inside `transaction`. It waits for its own lock and never ends.
 
 The conformance suite README has a full example on a file, with a lock file and an atomic rename.
 
@@ -71,7 +75,7 @@ The conformance suite README has a full example on a file, with a lock file and 
 |---|---|---|
 | `initialState` | `'BUILDING'` | `'ACTIVE'` makes a new index ACTIVE at once. The backfill check still runs, so an index can be `FAILED`. Use `'ACTIVE'` for local development. |
 | `activationMs` | 75000 | The time a new index stays `BUILDING`, as on the platform. |
-| `listLagMs` | 0 | A list by index leaves out an item until `listLagMs` after its last write, as the runtime can. `getBy` and `count` have no lag. |
+| `listLagMs` | 0 | A list by index leaves out an item until `listLagMs` after its last write, as the runtime can. `getBy` and `count` have no lag. A delete has no lag. |
 
 `backend.setIndexState(storeId, name, 'ACTIVE' | 'BUILDING' | 'FAILED')` holds an index in a state until the next
 call. Use it to test how a function handles `INDEX_NOT_READY`.

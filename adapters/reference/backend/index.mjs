@@ -188,9 +188,10 @@ export function createLocalBackend(options = {}) {
     publicKey: () => keyring.publicKey(),
     injectFault: (fault) => faults.inject(fault),
     now: () => core.now(),
-    setClock(ms) {
+    // The offset is in the snapshot, so it is a write.
+    setClock: (ms) => persisted(() => {
       core.offsetMs = ms - clock.now();
-    },
+    }),
     snapshot,
     restore,
   };

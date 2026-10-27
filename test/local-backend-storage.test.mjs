@@ -217,3 +217,98 @@ test('the adapter works with storage.transaction', async () => {
   const again = await createAdapter({ storage: disk.storage(), keys: KEYS });
   assert.deepEqual(again.backend.storeIds(), [storeId]);
 });
+
+test('a read during a write does not undo the write (review 1)', async () => {
+  const disk = createDisk();
+  const a = makeBackend(disk);
+  const b = makeBackend(disk);
+  await a.createStore({ id: 's', format: 2 });
+  await b.put('s', 'fromB', raw(1));
+  const write = a.put('s', 'fromA', raw(2));
+  assert.equal(a.get('s', 'fromB'), null, 'no reload while the write is in flight');
+  await write;
+  assert.equal(a.get('s', 'fromA').raw, raw(2));
+  assert.equal(a.get('s', 'fromB').raw, raw(1));
+});
+
+// A sync disk: save and load, with a change counter for changed().
+function createSyncDisk() {
+  const disk = { data: null, rev: 0, failSave: false };
+  disk.storage = () => {
+    let seen = -1;
+    return {
+      load() {
+        seen = disk.rev;
+        return disk.data === null ? null : JSON.parse(disk.data);
+      },
+      save(snapshot) {
+        if (disk.failSave) throw new Error('disk full');
+        disk.data = JSON.stringify(snapshot);
+        disk.rev += 1;
+        seen = disk.rev;
+      },
+      changed: () => disk.rev !== seen,
+    };
+  };
+  return disk;
+}
+
+test('with save and changed, a write reloads first and loses no other write (review 2)', () => {
+  const disk = createSyncDisk();
+  const clock = createVirtualClock();
+  const a = createLocalBackend({ clock, KVError, keys: KEYS, storage: disk.storage() });
+  const b = createLocalBackend({ clock, KVError, keys: KEYS, storage: disk.storage() });
+  a.createStore({ id: 's', format: 2 });
+  a.put('s', 'a', raw(1));
+  b.put('s', 'b', raw(2));
+  a.put('s', 'c', raw(3));
+  const keys = JSON.parse(disk.data).stores[0].items.map(([key]) => key).sort();
+  assert.deepEqual(keys, ['a', 'b', 'c']);
+});
+
+test('a failed save puts the memory back to the disk state (review 3)', async () => {
+  const sync = createSyncDisk();
+  const backend = createLocalBackend({ clock: createVirtualClock(), KVError, keys: KEYS, storage: sync.storage() });
+  backend.createStore({ id: 's', format: 2 });
+  sync.failSave = true;
+  assert.throws(() => backend.put('s', 'k', raw(1)), /disk full/);
+  assert.equal(backend.get('s', 'k'), null);
+  assert.throws(() => backend.createStore({ id: 't', format: 2 }), /disk full/);
+  assert.deepEqual(backend.storeIds(), ['s']);
+
+  const disk = createDisk();
+  const storage = disk.storage();
+  const a = createLocalBackend({ clock: createVirtualClock(), KVError, keys: KEYS, storage });
+  await a.createStore({ id: 's', format: 2 });
+  const transaction = storage.transaction;
+  storage.transaction = async (run) => {
+    await run(storage.load());
+    throw new Error('rename failed');
+  };
+  await assert.rejects(a.put('s', 'k', raw(1)), /rename failed/);
+  assert.equal(a.get('s', 'k'), null);
+  storage.transaction = transaction;
+  await a.put('s', 'k2', raw(1));
+  assert.equal(a.get('s', 'k2').raw, raw(1));
+});
+
+test('setClock is a write, so the next write keeps it (review 4)', async () => {
+  const disk = createDisk();
+  const clock = createVirtualClock();
+  const a = makeBackend(disk, clock);
+  await a.createStore({ id: 's', format: 2 });
+  await a.setClock(clock.now() + 3600000);
+  await a.put('s', 'k', raw(1));
+  assert.equal(a.now(), clock.now() + 3600000);
+});
+
+test('storage needs load and save or transaction (review 8)', () => {
+  const clock = createVirtualClock();
+  assert.throws(() => createLocalBackend({ clock, storage: { load: () => null, changed: () => false } }), /save\(\) or transaction\(\)/);
+  assert.throws(() => createLocalBackend({ clock, storage: { save: () => {} } }), /load\(\)/);
+});
+
+test('index settings ignore undefined values (review 9)', () => {
+  const { backend } = indexed({ initialState: undefined, activationMs: undefined, listLagMs: undefined });
+  assert.equal(backend.declareIndex('s', BY_T, { wait: false }).state, 'BUILDING');
+});
