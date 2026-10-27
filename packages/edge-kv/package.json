@@ -1,0 +1,44 @@
+{
+  "name": "@quantcdn/edge-kv",
+  "version": "0.1.0-rc.0",
+  "description": "The Quant edge kvStore API and a local KV and ledger backend, for local development and emulators",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./index.d.ts",
+  "files": [
+    "index.mjs",
+    "index.d.ts",
+    "src/",
+    "types/",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "scripts": {
+    "prepack": "node ../../scripts/build-edge-kv.mjs"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quantcdn/kv-ledger-conformance.git",
+    "directory": "packages/edge-kv"
+  },
+  "homepage": "https://github.com/quantcdn/kv-ledger-conformance/tree/develop/packages/edge-kv#readme",
+  "bugs": {
+    "url": "https://github.com/quantcdn/kv-ledger-conformance/issues"
+  },
+  "keywords": ["quant", "kv", "edge", "ledger", "emulator"]
+}

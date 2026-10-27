@@ -2,3 +2,9 @@ node_modules/
 .superpowers/
 *.log
 .env*
+# Build output of scripts/build-edge-kv.mjs
+packages/edge-kv/src/
+packages/edge-kv/types/
+packages/edge-kv/LICENSE
+packages/edge-kv/NOTICE
+*.tgz
