@@ -80,8 +80,8 @@ test('a backfill that finds a clash ends FAILED; drop removes the index', () => 
   assert.equal(result.error, 'UNIQUE_VIOLATION');
   throwsCode(() => backend.lookup('s1', 'byEmail', { email: 'a' }), 'INDEX_NOT_READY');
   backend.dropIndex('s1', 'byEmail');
-  throwsCode(() => backend.lookup('s1', 'byEmail', { email: 'a' }), 'NOT_FOUND');
-  throwsCode(() => backend.dropIndex('s1', 'byEmail'), 'NOT_FOUND');
+  throwsCode(() => backend.lookup('s1', 'byEmail', { email: 'a' }), 'VALIDATION');
+  throwsCode(() => backend.dropIndex('s1', 'byEmail'), 'VALIDATION');
 });
 
 test('unique: violation names the owner; an expired owner releases the value', async () => {

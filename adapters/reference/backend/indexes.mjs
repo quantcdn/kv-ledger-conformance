@@ -96,7 +96,7 @@ export function createIndexes(core, settings = indexSettings()) {
 
   function dropIndex(storeId, name) {
     const store = core.needStore(storeId);
-    if (!store.indexes.delete(name)) throw core.error('NOT_FOUND', `no index named ${name}`, { index: name });
+    if (!store.indexes.delete(name)) throw validation(`No index named ${name}`);
     return true;
   }
 
@@ -115,13 +115,16 @@ export function createIndexes(core, settings = indexSettings()) {
   // True when a list by index shows the item: its last write is at least listLagMs ago.
   const listed = (record) => settings.listLagMs === 0 || record.updatedAt <= core.now() - settings.listLagMs;
 
-  /** The ACTIVE index entry for a read; NOT_FOUND or INDEX_NOT_READY otherwise. kind: 'unique' | 'count'. */
+  // The texts are the platform's (index reads and the list query).
+  const NEEDS = { unique: 'lookup needs a unique index', count: 'count needs a count index' };
+
+  /** The ACTIVE index entry for a read; VALIDATION or INDEX_NOT_READY otherwise. kind: 'unique' | 'count'. */
   function readable(store, name, kind) {
     const entry = store.indexes.get(name);
-    if (entry === undefined) throw core.error('NOT_FOUND', `no index named ${name}`, { index: name });
-    if (kind !== undefined && !entry.def[kind]) throw validation(`index ${name} is not a ${kind} index`, { index: name });
+    if (entry === undefined) throw validation(`No index named ${name}`);
+    if (kind !== undefined && !entry.def[kind]) throw validation(`${NEEDS[kind]}; ${name} is not one`, { index: name });
     const { state } = refreshed(store, entry);
-    if (state !== 'ACTIVE') throw core.error('INDEX_NOT_READY', `index ${name} is ${state}`, { index: name, state });
+    if (state !== 'ACTIVE') throw core.error('INDEX_NOT_READY', `Index ${name} is not ready (${state})`, { index: name, state });
     return entry.def;
   }
 

@@ -554,7 +554,7 @@ reference adapter.
 | Tag | Default | Cases | Results (reference) | Content |
 |---|---|---|---|---|
 | `bytes` | on | 9 | 9 pass | Byte-layout vectors, no adapter: JCS definition hash, genesis hash, entry hash, Merkle root and audit paths, digest genesis, source chain. |
-| `core` | on | 115 | 226 pass, 1 skip | get/set/delete, getEntry/getMany, conditional writes, TTL, increment, atomic, list/search, collections, cursors, iteration, the handle, `KVError`, the error contract, limits, indexes, secrets, `verifyChain`. |
+| `core` | on | 116 | 228 pass, 1 skip | get/set/delete, getEntry/getMany, conditional writes, TTL, increment, atomic, list/search, collections, cursors, iteration, the handle, `KVError`, the error contract, limits, indexes, secrets, `verifyChain`. |
 | `ledger` | on | 26 | 52 pass | append, receipts, idempotency replay, chains, list windows, status, `verifyChain` over a ledger list, immutability, ledger errors, proof `pending`. |
 | `proof-timing` | off (slow) | 3 | 6 pass | proof `pending` to `archived`, signed proof checks, status after the archive. |
 | `subject-v1` | off, needs `--enable subject-v1` | 6 | skip (`subjectV1` false) | Subject pseudonym mode, version 1 of the subject contract. |

@@ -116,6 +116,15 @@ async function countNonCount(ctx) {
     { code: 'VALIDATION', retryable: false });
 }
 
+// An index that is not declared: VALIDATION with the platform text, for getBy, count and a list by index.
+async function unknownIndex(ctx) {
+  const noIndex = (err) => assert.match(err.message, /^No index named nope\b/, 'the message names the index');
+  const expected = { code: 'VALIDATION', retryable: false };
+  noIndex(await ctx.expectKVError(() => ctx.kv.getBy('nope', { email: 'a@example.com' }), expected));
+  noIndex(await ctx.expectKVError(() => ctx.kv.count({ index: 'nope', equals: {} }), expected));
+  noIndex(await ctx.expectKVError(() => ctx.kv.list({ index: 'nope', equals: {} }), expected));
+}
+
 async function notReady(ctx) {
   await ctx.admin.declareIndex(ctx.storeId, BY_EMAIL, { wait: false });
   const expected = { code: 'INDEX_NOT_READY', retryable: true, details: { index: 'byEmail' } };
@@ -161,6 +170,7 @@ export const coreIndexCases = [
   coreCase('indexes/getBy-non-unique', getByNonUnique, DECLARES),
   coreCase('indexes/count-non-count', countNonCount, DECLARES),
   coreCase('indexes/not-ready', notReady, BUILD),
+  coreCase('indexes/unknown-index', unknownIndex, DECLARES),
   coreCase('indexes/increment-indexed', incrementIndexed, DECLARES),
   coreCase('indexes/equals-bounds', equalsBounds, DECLARES),
 ];
