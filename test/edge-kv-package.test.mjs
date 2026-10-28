@@ -58,3 +58,13 @@ test('createLocalKv takes isAllowed', async () => {
   await assert.rejects(kvStore.get('site', 'k'), (err) => err.code === 'FORBIDDEN');
   assert.equal(await kvStore.get('linked', 'k'), null);
 });
+
+test('the publish tag check: prereleases need a non-latest tag, stable versions use latest', async () => {
+  const { tagProblem } = await import('../scripts/check-publish-tag.mjs');
+  assert.match(tagProblem('0.2.0-rc.0', undefined), /--tag next/);
+  assert.match(tagProblem('0.2.0-rc.0', 'latest'), /--tag next/);
+  assert.equal(tagProblem('0.2.0-rc.0', 'next'), null);
+  assert.equal(tagProblem('0.1.1', undefined), null);
+  assert.equal(tagProblem('0.1.1', 'latest'), null);
+  assert.match(tagProblem('0.1.1', 'next'), /without --tag/);
+});

@@ -25,11 +25,11 @@
     "README.md"
   ],
   "scripts": {
-    "prepack": "node ../../scripts/build-edge-kv.mjs"
+    "prepack": "node ../../scripts/build-edge-kv.mjs",
+    "prepublishOnly": "node ../../scripts/check-publish-tag.mjs"
   },
   "publishConfig": {
-    "access": "public",
-    "tag": "next"
+    "access": "public"
   },
   "repository": {
     "type": "git",
@@ -40,5 +40,11 @@
   "bugs": {
     "url": "https://github.com/quantcdn/kv-ledger-conformance/issues"
   },
-  "keywords": ["quant", "kv", "edge", "ledger", "emulator"]
+  "keywords": [
+    "quant",
+    "kv",
+    "edge",
+    "ledger",
+    "emulator"
+  ]
 }
