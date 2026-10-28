@@ -12,7 +12,7 @@ The conformance suite tests it on each change, with the same cases that it runs 
 ## Install
 
 ```sh
-npm install @quantcdn/edge-kv@next
+npm install @quantcdn/edge-kv
 ```
 
 Node 20 or later. ESM only.
@@ -91,6 +91,9 @@ call. Use it to test how a function handles `INDEX_NOT_READY`.
 
 - The ledger subject contract (`subjectMode`, subject entries) is not emulated yet.
 - One lock covers all stores. There are no snapshots for each store.
+- Each write with a storage hook copies the full snapshot (to save it, and to restore it after a failed save), so
+  the cost of a write grows with the size of the data. For many writes at once, use `atomic()` or one
+  `backend.transact` call, or fill a backend without storage and save its `snapshot()` once.
 
 ## Licence
 

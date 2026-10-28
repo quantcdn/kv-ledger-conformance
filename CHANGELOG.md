@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `@quantcdn/edge-kv` 0.1.0: the same code as 0.1.0-rc.2. The README names the cost of a write with a storage hook.
+
 - Storage hook: optional `storage.transaction(async (fresh) => next)`, so that two processes can share one snapshot
   with a lock, and optional `storage.changed()`, so that reads reload a changed snapshot. Without `transaction`,
   writes stay synchronous. A failed save puts the memory back to the disk state. `setClock` is now a write (it is
