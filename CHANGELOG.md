@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Public API adapter: `dispose` stops after `KVC_DISPOSE_MS` (default 5 minutes) and names the stores it did not
+  delete (`DISPOSE_DEADLINE`). Before, a full run could wait more than an hour on the kv-admin rate limit.
+
 - `@quantcdn/edge-kv` 0.1.0: the same code as 0.1.0-rc.2. The README names the cost of a write with a storage hook.
 
 - Storage hook: optional `storage.transaction(async (fresh) => next)`, so that two processes can share one snapshot

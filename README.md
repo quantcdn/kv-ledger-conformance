@@ -504,6 +504,7 @@ Environment variables:
 | `KVC_PROJECT` | The project. |
 | `KVC_API_TOKEN` | The API token. It is sent only as a bearer token. It is never logged. Server text that holds it is redacted. |
 | `KVC_RATE` | Requests per second, default 3. |
+| `KVC_DISPOSE_MS` | The time `dispose` may spend on store deletes, default 300000 (5 minutes). |
 
 ```sh
 node run.mjs --adapter adapters/http/index.mjs --tags core,ledger
@@ -517,7 +518,10 @@ Admin requests that answer 429 or 503 with `retryable: true` are sent again afte
 Data calls (the `kvStore` methods) are never sent again.
 
 `dispose` deletes the stores that the adapter made. A store with a ledger cannot be deleted. The adapter names it in
-the dispose summary and on standard error.
+the dispose summary and on standard error. A store delete is a kv-admin operation, which the platform limits to about
+10 a minute for each project, so a full run can make more stores than `dispose` can delete in time. After
+`KVC_DISPOSE_MS`, `dispose` stops and names each store it did not reach with the code `DISPOSE_DEADLINE`. Run the
+suite in a project made for the run, and delete the project afterwards.
 
 This adapter is not yet validated against a live platform (see the note in the edge harness section). The shape
 mappings were tested only against a small fake server. The mappings of `transact`, `append`, `getMany`,

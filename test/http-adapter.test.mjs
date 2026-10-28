@@ -338,3 +338,15 @@ test('edge-harness createAdapter without an admin builds the public API admin fr
     await harness.close();
   }
 });
+
+test('dispose stops at its deadline and names the stores it did not reach', async () => {
+  const lines = [];
+  const adapter = await makeAdapter({ log: (line) => lines.push(line), disposeMs: 0 });
+  const store = await adapter.admin.createStore();
+  const mark = api.log.length;
+  const summary = await adapter.admin.dispose();
+  assert.equal(since(mark).filter((r) => r.method === 'DELETE').length, 0, 'no delete after the deadline');
+  assert.deepEqual(summary.deleted, []);
+  assert.deepEqual(summary.kept, [{ store: store.identity.store, code: 'DISPOSE_DEADLINE' }]);
+  assert.ok(lines.some((line) => line.includes(store.identity.store)));
+});

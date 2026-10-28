@@ -4,7 +4,7 @@
 // edge-harness adapter. Operations: KV_create and KV_show (readiness), KV_delete, KV_indexes_create/show/delete,
 // KV_ledgers_create/show/delete, KV_ledgers_public_key.
 //
-// createAdmin({ api, org, stores, clock, pollMs, log }):
+// createAdmin({ api, org, stores, clock, pollMs, log, disposeMs }):
 //   stores   Map storeId -> { name, format }: the stores this adapter created (the kvStore allow-list)
 //   clock    waits between polls (clock.advance); pollMs the wait when the API gives no Retry-After
 //   log      called with one line when dispose could not delete a store (default: standard error)
@@ -36,7 +36,11 @@ function waitOf(retryAfter, pollMs) {
 
 const canRetry = (err, attempt) => err?.retryable === true && RETRY_STATUSES.includes(err.status) && attempt < MAX_ATTEMPTS;
 
-export function createAdmin({ api, org, stores, clock, pollMs = 5000, log = writeLine }) {
+// Store deletes are kv-admin operations: the platform allows about 10 a minute per project and answers 429 above
+// that. dispose therefore stops after disposeMs and names the stores it did not reach (code DISPOSE_DEADLINE).
+export const DISPOSE_MS = 300000;
+
+export function createAdmin({ api, org, stores, clock, pollMs = 5000, log = writeLine, disposeMs = DISPOSE_MS }) {
   const tag = runTag();
   let counter = 0;
 
@@ -103,9 +107,14 @@ export function createAdmin({ api, org, stores, clock, pollMs = 5000, log = writ
   async function dispose() {
     const deleted = [];
     const kept = [];
+    const deadline = clock.now() + disposeMs;
     for (const storeId of stores.keys()) {
+      if (leftUntil(deadline) <= 0) {
+        kept.push({ store: storeId, code: 'DISPOSE_DEADLINE' });
+        continue;
+      }
       try {
-        await send('DELETE', `/${enc(storeId)}`, { query: { force: true } });
+        await send('DELETE', `/${enc(storeId)}`, { query: { force: true } }, deadline);
         deleted.push(storeId);
       } catch (err) {
         kept.push({ store: storeId, code: err?.code ?? 'UNKNOWN' });

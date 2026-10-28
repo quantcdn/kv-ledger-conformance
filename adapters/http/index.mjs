@@ -21,7 +21,7 @@ import { createKVErrorClass } from '../../lib/kv-error.mjs';
 import { createRealClock } from '../../lib/clock.mjs';
 import { createPublicApi } from './lib/public-api.mjs';
 import { createApiBackend } from './lib/api-backend.mjs';
-import { createAdmin } from './lib/admin.mjs';
+import { createAdmin, DISPOSE_MS } from './lib/admin.mjs';
 
 const VARS = { base: 'KVC_API_BASE', org: 'KVC_ORG', project: 'KVC_PROJECT', token: 'KVC_API_TOKEN' };
 const RATE_VAR = 'KVC_RATE';
@@ -55,6 +55,14 @@ function isHttpUrl(text) {
   } catch {
     return false;
   }
+}
+
+// KVC_DISPOSE_MS: how long dispose may spend on store deletes (default DISPOSE_MS).
+function disposeMsOf(value) {
+  if (value === undefined || value === '') return DISPOSE_MS;
+  const ms = Number(value);
+  if (!Number.isSafeInteger(ms) || ms < 0) fail('KVC_DISPOSE_MS must be a whole number of milliseconds');
+  return ms;
 }
 
 function rateOf(options, env) {
@@ -94,6 +102,7 @@ export async function createAdapter(options = {}) {
     shapes: ['global', 'handle'],
     clock,
     capabilities: { ...CAPABILITIES },
-    admin: createAdmin({ api, org: config.org, stores, clock, pollMs: options.pollMs, log: options.log }),
+    admin: createAdmin({ api, org: config.org, stores, clock, pollMs: options.pollMs, log: options.log,
+      disposeMs: options.disposeMs ?? disposeMsOf(process.env.KVC_DISPOSE_MS) }),
   };
 }
