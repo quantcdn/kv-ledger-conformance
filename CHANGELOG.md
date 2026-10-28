@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `@quantcdn/edge-kv` 0.1.1: an unknown option error says `Unknown <kind> option: <name>`, as the runtime does
+  (was `<name> is not an option`). The ttl hint for expiry-like names is unchanged. `core/ttl/expiry-like-names`
+  now checks the text.
+
 - Public API adapter: `dispose` stops after `KVC_DISPOSE_MS` (default 5 minutes) and names the stores it did not
   delete (`DISPOSE_DEADLINE`). Before, a full run could wait more than an hour on the kv-admin rate limit.
 

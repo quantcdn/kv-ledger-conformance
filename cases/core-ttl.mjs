@@ -69,9 +69,12 @@ async function rewriteClearsTtl(ctx) {
 async function expiryLikeNames(ctx) {
   const key = ctx.uniqueKey('name');
   const expected = { code: 'VALIDATION', retryable: false, details: { hint: ctx.limits.expiryHint } };
+  // The runtime's text: `Unknown <kind> option: <name>`.
   for (const name of ctx.limits.expiryOptionNames) {
-    await ctx.expectKVError(() => ctx.kv.set(key, 1, { [name]: ctx.limits.ttl.min }), expected);
-    await ctx.expectKVError(() => ctx.kv.delete(key, { [name]: ctx.limits.ttl.min }), expected);
+    const set = await ctx.expectKVError(() => ctx.kv.set(key, 1, { [name]: ctx.limits.ttl.min }), expected);
+    assert.equal(set.message, `Unknown set option: ${name}`);
+    const del = await ctx.expectKVError(() => ctx.kv.delete(key, { [name]: ctx.limits.ttl.min }), expected);
+    assert.equal(del.message, `Unknown delete option: ${name}`);
   }
   assert.equal(await ctx.kv.get(key), null, 'nothing written');
 }
