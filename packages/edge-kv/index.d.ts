@@ -108,6 +108,28 @@ export interface LedgerDefinition {
   [field: string]: unknown;
 }
 
+/** A ledger of a store, as backend.ledgers lists it (a copy). */
+export interface LedgerListing {
+  name: string;
+  state: 'PENDING' | 'ACTIVE' | 'DROPPED' | 'FAILED';
+  /** ISO 8601. Only when PENDING. */
+  activeAfter?: string;
+  /** The completed definition: v, name, collection, chains, retentionDays, lockMode, personalFields, subjectField?,
+   * subjectMode?, subjectCase?, anchor, createdAt. */
+  definition: Required<Pick<LedgerDefinition, 'name' | 'collection' | 'chains' | 'retentionDays' | 'lockMode' | 'personalFields'>>
+    & LedgerDefinition & { v: 1; anchor: Record<string, unknown>; createdAt: string };
+}
+
+/** An index of a store, as backend.indexes lists it (a copy). */
+export interface IndexListing {
+  name: string;
+  state: IndexState;
+  /** The backfill error of a FAILED index, for example 'UNIQUE_VIOLATION'. */
+  error?: string;
+  /** The normalized definition: unique and count are booleans. */
+  definition: IndexDefinition & { unique: boolean; count: boolean };
+}
+
 /** The body of a shred, as the platform route POST …/ledgers/{name}/shred takes it. */
 export interface ShredRequest {
   subjectId: string | number;
@@ -175,6 +197,10 @@ export interface LocalBackend {
   setIndexState(storeId: string, name: string, state: IndexState): MaybePromise<{ name: string; state: IndexState }>;
   declareLedger(storeId: string, def: LedgerDefinition, options?: { wait?: boolean }): MaybePromise<{ activeAfter: string; [field: string]: unknown }>;
   dropLedger(storeId: string, name: string): MaybePromise<unknown>;
+  /** The ledgers of the store, each state brought up to the clock. A read. STORE_NOT_FOUND for an unknown store. */
+  ledgers(storeId: string): LedgerListing[];
+  /** The indexes of the store, each state brought up to the clock. A read. STORE_NOT_FOUND for an unknown store. */
+  indexes(storeId: string): IndexListing[];
   /** Shreds a data subject of a ledger: shred entries, then the key is destroyed. A write. */
   shred(storeId: string, ledger: string, body: ShredRequest): MaybePromise<ShredResult>;
   /** The entries of one data subject (the live key generation), or the erasure records of a shredded one. A read. */

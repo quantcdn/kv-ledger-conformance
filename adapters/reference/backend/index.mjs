@@ -11,6 +11,7 @@
 // indexes ({ initialState: 'BUILDING' | 'ACTIVE', activationMs, listLagMs }: see indexes.mjs).
 // Ledger subjects (subject contract v1; docs/subject-v1-local.md): shred(storeId, ledger, body) and
 // subjectEntries(storeId, ledger, body) are the platform's ledger routes, not edge kvStore calls.
+// ledgers(storeId) and indexes(storeId) list the declarations of a store (read-only copies).
 import { LIMITS } from '../../../lib/limits.mjs';
 import { createKVErrorClass } from '../../../lib/kv-error.mjs';
 import { createCore, newStore } from './core.mjs';
@@ -145,6 +146,33 @@ function createStoreAdmin(core, { persisted, refresh }) {
   };
 }
 
+// Read-only listings of the ledgers and indexes of a store, with each state brought up to the clock. Copies only.
+function createListings(core, { ledgers, indexes }, refresh) {
+  const iso = (ms) => new Date(ms).toISOString();
+  function ledgerRow(store, entry) {
+    const { state } = ledgers.refreshed(store, entry);
+    const row = { name: entry.definition.name, state };
+    if (state === 'PENDING') row.activeAfter = iso(entry.activeAfterMs);
+    return { ...row, definition: structuredClone(entry.definition) };
+  }
+  function indexRow(store, entry) {
+    const { state, error } = indexes.refreshed(store, entry);
+    return { name: entry.def.name, state, ...(error ? { error } : {}), definition: structuredClone(entry.def) };
+  }
+  return {
+    ledgers(storeId) {
+      refresh();
+      const store = core.needStore(storeId);
+      return [...store.ledgers.values()].map((entry) => ledgerRow(store, entry));
+    },
+    indexes(storeId) {
+      refresh();
+      const store = core.needStore(storeId);
+      return [...store.indexes.values()].map((entry) => indexRow(store, entry));
+    },
+  };
+}
+
 // Local keys (secret, cursor, proof), replaced on restore. The modules hold forwarding objects, not the keys.
 function createKeyring(core, keys = {}) {
   let sealer = createSealer(keys.secret);
@@ -206,6 +234,7 @@ export function createLocalBackend(options = {}) {
       return query(...args);
     },
     ...createIndexCalls(core, values, indexes, persistence),
+    ...createListings(core, { ledgers, indexes }, refresh),
     ...createLedgerCalls(core, ledgerParts, persistence),
     publicKey: () => keyring.publicKey(),
     injectFault: (fault) => faults.inject(fault),

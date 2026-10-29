@@ -24,6 +24,9 @@ Suite and `@quantcdn/edge-kv` 0.2.0. Minor: a new feature.
 - Breaking for stored data: a ledger declared with a `subjectField` by 0.1.x has no `subjectMode`. It now refuses
   appends and decrypted reads with `LEDGER_FORMAT_RETIRED`, as the platform does. Declare a new ledger.
 - The append reserved-field errors use the platform texts.
+- New read-only backend calls `ledgers(storeId)` (`[{ name, state, activeAfter?, definition }]`) and
+  `indexes(storeId)` (`[{ name, state, error?, definition }]`): states brought up to the clock, copies,
+  `STORE_NOT_FOUND` for an unknown store. Use them instead of reading `snapshot().stores`.
 - The reference adapter has `subjectV1: true` and passes the `subject-v1` cases (`--tags subject-v1 --enable
   subject-v1`).
 - Storage hook: a write makes one copy of the snapshot (the one it saves), not two. A failed save goes back to

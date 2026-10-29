@@ -368,3 +368,57 @@ test('a write with a storage hook takes one snapshot (the one it saves), not a s
   assert.throws(() => flaky.persisted(() => { failing.data.n += 1; }), /disk full/);
   assert.equal(failing.data.n, 1, 'back to the state last saved');
 });
+
+test('backend.ledgers and backend.indexes list the declarations, brought up to the clock, as copies', async () => {
+  const clock = createVirtualClock();
+  const backend = createLocalBackend({ clock, KVError });
+  assert.throws(() => backend.ledgers('none'), (err) => err.code === 'STORE_NOT_FOUND');
+  assert.throws(() => backend.indexes('none'), (err) => err.code === 'STORE_NOT_FOUND');
+  backend.createStore({ id: 's', format: 2 });
+  assert.deepEqual(backend.ledgers('s'), []);
+  assert.deepEqual(backend.indexes('s'), []);
+  const declared = backend.declareLedger('s', { name: 'audit', collection: 'audit', chains: 1, retentionDays: 1,
+    personalFields: ['email'], subjectField: 'userId' }, { wait: false });
+  backend.declareIndex('s', { name: 'byT', collection: 'item', fields: ['t'] }, { wait: false });
+  backend.put('s', 'bad:1', raw({ u: 1 }));
+  backend.declareIndex('s', { name: 'uniq', collection: 'bad', fields: ['u'], unique: true });
+  backend.put('s', 'dup:1', raw({ u: 1 }));
+  backend.put('s', 'dup:2', raw({ u: 1 }));
+  backend.declareIndex('s', { name: 'dupe', collection: 'dup', fields: ['u'], unique: true });
+
+  const [ledger] = backend.ledgers('s');
+  assert.deepEqual(ledger, { name: 'audit', state: 'PENDING', activeAfter: declared.activeAfter,
+    definition: declared.definition });
+  assert.equal(ledger.definition.subjectMode, 'pseudonym');
+  assert.deepEqual(ledger.definition.personalFields, ['email']);
+  assert.deepEqual(backend.indexes('s'), [
+    { name: 'byT', state: 'BUILDING', definition: { name: 'byT', collection: 'item', fields: ['t'], unique: false, count: false } },
+    { name: 'uniq', state: 'ACTIVE', definition: { name: 'uniq', collection: 'bad', fields: ['u'], unique: true, count: false } },
+    { name: 'dupe', state: 'FAILED', error: 'UNIQUE_VIOLATION',
+      definition: { name: 'dupe', collection: 'dup', fields: ['u'], unique: true, count: false } },
+  ]);
+
+  await clock.advance(10 * 60 * 1000);
+  assert.deepEqual(backend.ledgers('s').map((l) => [l.state, Object.hasOwn(l, 'activeAfter')]), [['ACTIVE', false]]);
+  assert.equal(backend.indexes('s')[0].state, 'ACTIVE');
+
+  const copy = backend.ledgers('s')[0];
+  copy.definition.personalFields.push('x');
+  copy.state = 'DROPPED';
+  backend.indexes('s')[0].definition.fields.push('x');
+  assert.deepEqual(backend.ledgers('s')[0].definition.personalFields, ['email'], 'a copy');
+  assert.equal(backend.ledgers('s')[0].state, 'ACTIVE');
+  assert.deepEqual(backend.indexes('s')[0].definition.fields, ['t'], 'a copy');
+});
+
+test('backend.ledgers and backend.indexes reload a changed snapshot first', () => {
+  const disk = createSyncDisk();
+  const clock = createVirtualClock();
+  const a = createLocalBackend({ clock, KVError, keys: KEYS, storage: disk.storage() });
+  const b = createLocalBackend({ clock, KVError, keys: KEYS, storage: disk.storage() });
+  a.createStore({ id: 's', format: 2 });
+  a.declareLedger('s', { name: 'audit', collection: 'audit', chains: 1, retentionDays: 1 });
+  a.declareIndex('s', { name: 'byT', collection: 'item', fields: ['t'] });
+  assert.deepEqual(b.ledgers('s').map((l) => [l.name, l.state]), [['audit', 'ACTIVE']]);
+  assert.deepEqual(b.indexes('s').map((i) => [i.name, i.state]), [['byT', 'ACTIVE']]);
+});

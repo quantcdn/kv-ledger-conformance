@@ -327,6 +327,18 @@ const kvStore = buildKvStore(calls, KVError); // give this to the edge function 
 
 The adapter also returns `backend`. `backend.snapshot()` and `backend.restore(snapshot)` save and load the full state.
 
+The backend also lists the declarations of a store, read-only:
+
+- `backend.ledgers(storeId)`: the ledgers of the store, `[{ name, state, activeAfter?, definition }]`. `state` is
+  `'PENDING'`, `'ACTIVE'`, `'DROPPED'` or `'FAILED'`; `activeAfter` (ISO 8601) is only on a `PENDING` ledger;
+  `definition` is the completed definition (with `personalFields`, and `subjectField`, `subjectMode` and `subjectCase`
+  for a subject ledger).
+- `backend.indexes(storeId)`: the indexes of the store, `[{ name, state, error?, definition }]`. `state` is
+  `'BUILDING'`, `'ACTIVE'` or `'FAILED'`; `error` names the backfill error of a `FAILED` index; `definition` is the
+  normalized definition.
+- Both are reads: they bring each state up to the clock (and reload a changed snapshot first, with `changed()`),
+  return copies, and throw `STORE_NOT_FOUND` for an unknown store. Use them instead of reading `snapshot()`.
+
 ### Storage hook
 
 The backend does no I/O. The storage hook does the I/O. It has four functions:

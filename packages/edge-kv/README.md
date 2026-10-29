@@ -82,6 +82,15 @@ call. Use it to test how a function handles `INDEX_NOT_READY`.
 
 ## Other backend controls
 
+- `backend.ledgers(storeId)`: the ledgers of the store, `[{ name, state, activeAfter?, definition }]`. `state` is
+  `'PENDING'`, `'ACTIVE'`, `'DROPPED'` or `'FAILED'`; `activeAfter` (ISO 8601) is only on a `PENDING` ledger;
+  `definition` is the completed definition (with `personalFields`, and `subjectField`, `subjectMode` and `subjectCase`
+  for a subject ledger).
+- `backend.indexes(storeId)`: the indexes of the store, `[{ name, state, error?, definition }]`. `state` is
+  `'BUILDING'`, `'ACTIVE'` or `'FAILED'`; `error` names the backfill error of a `FAILED` index; `definition` is the
+  normalized definition.
+- Both are reads: they bring each state up to the clock (and reload a changed snapshot first, with `changed()`),
+  return copies, and throw `STORE_NOT_FOUND` for an unknown store. Use them instead of reading `snapshot()`.
 - `backend.archiveNow(storeId)`: archive every ledger entry now, so `ledgerProof` returns a signed proof.
 - `backend.injectFault({ op, when })`: the next call of `op` fails, `'before'` the write or `'after-write'`.
 - `backend.setClock(ms)`: set the server time.
