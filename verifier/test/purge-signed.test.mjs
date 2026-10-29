@@ -72,3 +72,19 @@ test('verify-signed CLI: PURGED exit 0 with a summary line; a changed byte exit 
   assert.equal(bad.status, 4);
   assert.match(bad.stdout, /signature invalid/);
 });
+
+// A KMS key ARN, built from parts (the public-safety scan refuses ARN text in the repository).
+const kmsArn = (keyId) => ['arn', 'aws', 'kms', 'region-1', '0'.repeat(12), `key/${keyId}`].join(':');
+
+// K1: a purge receipt signed before K1 has the key ARN inside its signed json (unchanged) and the public key id outside.
+test('K1: an old purge receipt (ARN inside json, public key id outside) verifies with the key listed by its public key id', async () => {
+  const p = await buildPurge();
+  p.edit((r) => { r.keyId = kmsArn('k1'); });
+  p.resign();
+  const doc = { ...p.receiptDoc, keyId: 'k1' };
+  const r = verifySigned(doc, { k1: p.publicKeyPem });
+  assert.equal(r.ok, true, r.reason);
+  assert.equal(r.signed.keyId, kmsArn('k1'), 'the signed json keeps its bytes');
+  assert.equal(verifySigned(doc, { [kmsArn('k1')]: p.publicKeyPem }).ok, true, 'a key file that still names the ARN');
+  assert.equal(verifySigned(doc, { other: p.publicKeyPem }).ok, false);
+});

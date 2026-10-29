@@ -10,6 +10,7 @@ import { basename } from 'node:path';
 import { verifyArchive } from './lib/verify.mjs';
 import { entriesSha256, keysFromJson, PURGE_RECEIPT_TYPE, RECEIPT_MEANING, verifySigned } from './lib/signed.mjs';
 import { verifyProof } from './lib/proof.mjs';
+import { publicKeyId } from './lib/key-id.mjs';
 import { purgeCheck } from './lib/purge.mjs';
 
 const USAGE = 'usage: verify.mjs --dir <archive root> --store <org>/<store> --public-key <key.pem> [--receipts <receipts.jsonl>] [--anchors <dir>] [--anchor-copies <dir>] [--tsa-root <pem>] [--as-of <ISO time>] [--strict] [--list-entries] [--json]';
@@ -138,7 +139,7 @@ function verifySignedCommand(argv) {
   if (!r.ok) { console.log(`signature invalid: ${r.reason}`); return 4; }
   const v = r.signed, badEntries = entriesFault(v, entries);
   if (badEntries) { console.log(`signature invalid: ${badEntries}`); return 4; }
-  console.log(`signature valid (signed by ${doc.keyId ?? 'the given key'})`);
+  console.log(`signature valid (signed by ${typeof doc.keyId === 'string' ? publicKeyId(doc.keyId) : 'the given key'})`);
   console.log(`${r.verdict} ${v.type} ${heading(v)}: ${SUMMARY[v.type](v)}`);
   if (RECEIPT_MEANING[r.verdict]) console.log(RECEIPT_MEANING[r.verdict] + (entries ? ' The given entries match the receipt.' : ''));
   console.log(JSON.stringify(v, null, 2));

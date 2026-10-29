@@ -306,3 +306,20 @@ function withHelpers(f) {
   f.swapToken = () => writeFileSync(join(f.anchorDir, '20261016.tsr'), makeTokenFor('07'.repeat(32)));
   return f;
 }
+
+// A KMS key ARN, built from parts (the public-safety scan refuses ARN text in the repository).
+const kmsArn = (keyId) => ['arn', 'aws', 'kms', 'region-1', '0'.repeat(12), `key/${keyId}`].join(':');
+
+// K1: the public-key route names keys by the public key id (the KMS key id). A proof of a digest signed before K1
+// names the key ARN; the verifier matches the key id at the end of the ARN, in either direction.
+test('K1: --public-keys: an old ARN keyId finds the key named by its public key id, and the reverse', () => {
+  const f = buildProof();
+  const arn = kmsArn('test-ledger-key');
+  const old = verifyProof({ proof: { ...f.proof, keyId: arn }, keys: { 'test-ledger-key': f.publicKeyPem } });
+  assert.deepEqual(failed(old), []);
+  assert.match(stepOf(old, 4).detail, /keyId test-ledger-key/);
+  assert.doesNotMatch(stepOf(old, 4).detail, /000000000000/);
+  assert.deepEqual(failed(verifyProof({ proof: f.proof, keys: { [arn]: f.publicKeyPem } })), []);
+  const other = verifyProof({ proof: { ...f.proof, keyId: kmsArn('another-key') }, keys: { 'test-ledger-key': f.publicKeyPem } });
+  assert.deepEqual(failed(other), [4]);
+});

@@ -9,6 +9,7 @@
 // A pending proof ({ status: 'pending' }) is not yet verifiable: it fails, never passes.
 import { createPublicKey, verify } from 'node:crypto';
 import { canonicalJson } from './jcs.mjs';
+import { keyNamed, publicKeyId } from './key-id.mjs';
 import { entryHash, instanceName, sha256Hex } from './hash.mjs';
 import { rootFromAuditPath } from './merkle.mjs';
 import { checkProofAnchor } from './proof-anchor.mjs';
@@ -98,12 +99,14 @@ function checkDigest(proof, s1, s2) {
   return { ok: true, detail: `${proof.digestKey} lists ${proof.archiveKey.split('/').pop()} (seq ${c.found.inst.fromSeq}-${c.found.inst.toSeq}) with merkleRoot ${short(c.root)}` };
 }
 
-// keys: one PEM (used whatever keyId says), or an object that maps keyId to PEM.
+// keys: one PEM (used whatever keyId says), or an object that maps keyId to PEM (a key ARN and its key id match).
 function keyFor(proof, keys) {
   if (typeof keys === 'string') return { pem: keys };
-  if (isObject(keys) && Object.prototype.hasOwnProperty.call(keys, proof.keyId)) return { pem: keys[proof.keyId] };
-  return { fault: `no public key for keyId ${proof.keyId}` };
+  const pem = isObject(keys) ? keyNamed(keys, proof.keyId) : undefined;
+  return pem === undefined ? { fault: `no public key for keyId ${shownKeyId(proof.keyId)}` } : { pem };
 }
+// A step line names the public key id, never an account id from an old key ARN.
+const shownKeyId = (keyId) => (typeof keyId === 'string' ? publicKeyId(keyId) : keyId);
 function p256(pem) {
   try {
     const key = createPublicKey(pem);
@@ -121,7 +124,7 @@ function checkSignature(proof, keys) {
   const key = p256(k.pem);
   if (!key) return { ok: false, detail: 'the public key is not an ECDSA P-256 key' };
   const ok = signatureValid(key, Buffer.from(canonicalJson(proof.digest), 'utf8'), proof.signature);
-  const by = typeof keys === 'string' ? `the given key; the proof keyId ${proof.keyId} is not checked against it` : `keyId ${proof.keyId}`;
+  const by = typeof keys === 'string' ? `the given key; the proof keyId ${shownKeyId(proof.keyId)} is not checked against it` : `keyId ${shownKeyId(proof.keyId)}`;
   return { ok, detail: ok ? `the ECDSA P-256 signature over the JCS bytes of the digest verifies (${by})` : `the signature does not verify over the JCS bytes of the digest (${by})` };
 }
 

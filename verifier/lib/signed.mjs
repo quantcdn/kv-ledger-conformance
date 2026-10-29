@@ -6,6 +6,7 @@
 // document also carries report or receipt (the parsed form), it must be exactly json.
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { canonicalJson } from './jcs.mjs';
+import { keyNamed } from './key-id.mjs';
 
 export const SIGNED_ALGORITHM = 'ECDSA_SHA_256';
 // The document types this verifier knows, each with its verdict from the signed json.
@@ -99,10 +100,9 @@ export const DOCUMENT_TYPES = { 'kv-ledger-verification-report': reportVerdict, 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const fail = (reason) => ({ ok: false, reason });
 
-// keys: one PEM (used whatever keyId says), or an object that maps keyId to PEM.
+// keys: one PEM (used whatever keyId says), or an object that maps keyId to PEM (a key ARN and its key id match).
 function keyFor(doc, keys) {
-  if (typeof keys === 'string') return keys;
-  return keys && typeof keys === 'object' && Object.prototype.hasOwnProperty.call(keys, doc.keyId) ? keys[doc.keyId] : undefined;
+  return typeof keys === 'string' ? keys : keyNamed(keys, doc.keyId);
 }
 function p256(pem) {
   const key = createPublicKey(pem);

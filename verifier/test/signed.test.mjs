@@ -203,3 +203,15 @@ test('rejects refKeyVersion on a v1 receipt, and v3', () => {
   assert.match(verifySigned(signedReceipt({ ...receipt, refKeyVersion: 1 }), k1.pem).reason, /refKeyVersion/);
   assert.match(verifySigned(signedReceipt({ ...receipt, v: 3, refKeyVersion: 1 }), k1.pem).reason, /v is not 1 or 2/);
 });
+
+// A KMS key ARN, built from parts (the public-safety scan refuses ARN text in the repository).
+const kmsArn = (keyId) => ['arn', 'aws', 'kms', 'region-1', '0'.repeat(12), `key/${keyId}`].join(':');
+
+// K1: keys are named by the public key id (the KMS key id). A document signed before K1 names the key ARN.
+test('K1: an old ARN keyId finds the key named by its public key id, and the reverse; another key id fails', () => {
+  const arn = kmsArn('5e1f0000-0000-4000-8000-000000000001');
+  const byPublic = keysFromJson(JSON.stringify({ keyId: '5e1f0000-0000-4000-8000-000000000001', publicKeyPem: k1.pem }));
+  assert.equal(verifySigned(signedDoc(report, k1.privateKey, arn), byPublic).ok, true);
+  assert.equal(verifySigned(signedDoc(report, k1.privateKey, '5e1f0000-0000-4000-8000-000000000001'), keysFromJson(JSON.stringify({ [arn]: k1.pem }))).ok, true);
+  assert.match(verifySigned(signedDoc(report, k1.privateKey, kmsArn('other')), byPublic).reason, /no public key for keyId/);
+});

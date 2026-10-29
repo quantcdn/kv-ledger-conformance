@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Verifier: a `keyId` matches a key when the ids are equal or when the KMS key id at the end of a key ARN is
+  equal. The public-key route now names keys by the KMS key id (no account id or region); documents and digest
+  signatures made before 2026-10-29 keep the key ARN. Step lines and `verify-signed` name the key id only.
+
 - `@quantcdn/edge-kv` 0.1.1: an unknown option error says `Unknown <kind> option: <name>`, as the runtime does
   (was `<name> is not an option`). The ttl hint for expiry-like names is unchanged. `core/ttl/expiry-like-names`
   now checks the text.
