@@ -62,7 +62,7 @@ write at the same time can overwrite each other's writes. The lock covers the fu
 backend puts its memory back to the disk state, and the write throws the error.
 
 > **Caution:** With `transaction`, the backend write and admin methods return promises (`createStore`,
-> `declareIndex`, `setIndexState`, `declareLedger`, `setClock` and the others). Always `await` them. The
+> `declareIndex`, `setIndexState`, `declareLedger`, `shred`, `setClock` and the others). Always `await` them. The
 > `kvStore` methods are async in all modes.
 
 > **Caution:** Do not call a backend write from inside `transaction`. It waits for its own lock and never ends.
@@ -87,13 +87,47 @@ call. Use it to test how a function handles `INDEX_NOT_READY`.
 - `backend.setClock(ms)`: set the server time.
 - `backend.snapshot()` and `backend.restore(snapshot)`: save and load the full state.
 
+## Ledger subjects
+
+The backend emulates the ledger subject contract, version 1, of the platform:
+
+```js
+await backend.declareLedger('site-data', {
+  name: 'audit', collection: 'audit:*', chains: 1, retentionDays: 30,
+  subjectField: 'userId', personalFields: ['email'], // subjectMode 'pseudonym' and subjectCase 'exact' by default
+});
+const store = kvStore.open('site-data');
+const r = await store.append('audit:login', { userId: 'u-17', email: 'a@example.com' });
+await store.get(r.key); // { userId: 'u-17', email: 'a@example.com' }
+
+const done = await backend.shred('site-data', 'audit',
+  { subjectId: 'u-17', reason: 'Erasure request 1', authority: 'Policy 4', requestedBy: 'Privacy officer' });
+await store.get(r.key); // { userId: { $shredded: true }, email: { $shredded: true } }
+backend.subjectEntries('site-data', 'audit', { subjectId: 'u-17' }); // { subjectState: 'shredded', shreds: [...], ... }
+```
+
+- `subjectMode`: `'pseudonym'` (default) stores a token in the subject field and the value as appended, sealed;
+  `'clear'` keeps the field and stores the token in `$subjectTag`. `subjectCase`: `'exact'` (default) or `'fold'`.
+  Both are immutable.
+- Reads show the value as appended, or `{ $shredded: true }` after a shred. `ledger.subject` names the mode.
+- `backend.shred(storeId, ledger, body)` and `backend.subjectEntries(storeId, ledger, body)` return the body of the
+  platform routes `POST …/ledgers/{name}/shred` and `POST …/ledgers/{name}/subject-entries`. They are not on
+  `kvStore`. The shred receipt is signed with the local key of `backend.publicKey()`.
+- A ledger declared with a subject field by 0.1.x has no `subjectMode`. It now refuses appends and decrypted reads
+  with `LEDGER_FORMAT_RETIRED`, as the platform does. Declare a new ledger.
+
+The subject keys are local keys in the snapshot, not KMS keys. The conformance suite's
+[docs/subject-v1-local.md](https://github.com/quantcdn/kv-ledger-conformance/blob/develop/docs/subject-v1-local.md)
+lists what is emulated and what is not.
+
 ## Not in this version
 
-- The ledger subject contract (`subjectMode`, subject entries) is not emulated yet.
+- The shred has no 202 (in progress) answer, no subject reference key rotation and no forked stores. There is no
+  subject preview, shreds list or receipt route.
 - One lock covers all stores. There are no snapshots for each store.
-- Each write with a storage hook copies the full snapshot (to save it, and to restore it after a failed save), so
-  the cost of a write grows with the size of the data. For many writes at once, use `atomic()` or one
-  `backend.transact` call, or fill a backend without storage and save its `snapshot()` once.
+- Each write with a storage hook makes one copy of the full snapshot (the one it saves), so the cost of a write
+  grows with the size of the data. For many writes at once, use `atomic()` or one `backend.transact` call, or fill a
+  backend without storage and save its `snapshot()` once.
 
 ## Licence
 

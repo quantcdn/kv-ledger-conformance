@@ -38,7 +38,7 @@ function capabilitiesOf(clock, budgetRows, indexes) {
     signedProofs: true,
     search: true,
     secretEncryption: true,
-    subjectV1: false,
+    subjectV1: true,
     setClock: true,
     advanceArchive: true,
     injectFault: true,
@@ -87,6 +87,9 @@ function createAdmin(backend, allowed, clock) {
       backend.storeFormat(storeId);
       return backend.publicKey();
     },
+    // The ledger subject routes of the platform (subject contract v1): the shred, and the entries of one subject.
+    shred: (storeId, ledger, body) => backend.shred(storeId, ledger, body),
+    subjectEntries: async (storeId, ledger, body) => backend.subjectEntries(storeId, ledger, body),
     async dispose() {
       await backend.reset();
       allowed.clear();

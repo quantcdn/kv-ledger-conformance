@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const RANDOM_LIMIT = 1n << 80n;
 
-function base32(value, length) {
+export function base32(value, length) {
   let n = BigInt(value);
   let out = '';
   for (let i = 0; i < length; i += 1) {

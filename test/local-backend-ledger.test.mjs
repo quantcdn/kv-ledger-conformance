@@ -130,13 +130,16 @@ test('personal fields are sealed per subject and opened on reads', () => {
   const r = backend.append('s1', 'audit', { userId: 'u1', name: 'A. Person', note: 'n' }, {});
   const stored = JSON.parse(recordOf(backend, r.key).stored);
   assert.deepEqual(Object.keys(stored.value.name), ['$enc', 'iv', 'tag']);
-  assert.equal(stored.value.userId, 'u1');
+  assert.match(stored.value.userId, /^qsub1_[0-7][0-9A-HJKMNP-TV-Z]{25}$/, 'pseudonym mode stores the token');
+  assert.deepEqual(Object.keys(stored.value.$subject), ['$enc', 'iv', 'tag'], 'and the subject sealed in $subject');
   assert.deepEqual(JSON.parse(backend.get('s1', r.key).raw), { userId: 'u1', name: 'A. Person', note: 'n' });
   const page = backend.query('s1', { collection: 'audit', includeValues: true });
   assert.equal(page.items[0].value.name, 'A. Person');
   assert.deepEqual(page.items[0].personal, ['name']);
   const scan = backend.query('s1', { prefix: 'audit', includeValues: true });
   assert.equal(scan.items[0].value.name, '[PERSONAL]', 'a prefix list does not decrypt');
+  assert.equal(scan.items[0].value.userId, stored.value.userId, 'a prefix list shows the token');
+  assert.equal(Object.hasOwn(scan.items[0].value, '$subject'), false);
   throwsCode(() => backend.append('s1', 'audit', { name: 'B' }, {}), 'LEDGER_SUBJECT_REQUIRED');
   assert.equal(backend.append('s1', 'audit', { note: 'no personal field' }, {}).seq, 2);
 });

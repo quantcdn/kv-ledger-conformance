@@ -2,13 +2,17 @@
 // Copyright 2026 QuantCDN Pty Ltd
 // Ledger definitions (ledgers page "Declare a Ledger" and "Definition Hash"): the rules, and the completed
 // definition { v: 1, name, collection, chains, retentionDays, lockMode, personalFields, subjectField?, anchor,
-// createdAt }. Pure functions: nothing here touches the store. The subject-v1 fields (subjectMode, subjectCase) are
-// not accepted while the reference adapter has subjectV1 false.
+// createdAt } plus, with a subjectField, subjectMode ('pseudonym' by default) and subjectCase ('exact' by default)
+// (subject contract version 1). Pure functions: nothing here touches the store.
 import { LIMITS } from '../../../lib/limits.mjs';
 import { isIntIn, isPlainObject, utf8Bytes } from '../../../lib/check-util.mjs';
 
 const KNOWN = new Set(['name', 'collection', 'chains', 'retentionDays', 'lockMode', 'personalFields', 'subjectField',
-  'anchor']);
+  'anchor', 'subjectMode', 'subjectCase']);
+// The subject options, their values and defaults (the platform's).
+const SUBJECT_OPTIONS = ['subjectMode', 'subjectCase'];
+const SUBJECT_VALUES = { subjectMode: ['pseudonym', 'clear'], subjectCase: ['exact', 'fold'] };
+const SUBJECT_DEFAULTS = { subjectMode: 'pseudonym', subjectCase: 'exact' };
 const LOCK_MODES = ['governance', 'compliance'];
 const ANCHOR_TYPES = ['none', 'customer-bucket', 'rfc3161'];
 
@@ -41,6 +45,15 @@ export function ledgerDefinitionProblem(def) {
   return rule === undefined ? null : rule[0];
 }
 
+/** The problem text of the subject options (the platform's), or null. */
+export function subjectOptionProblem(def) {
+  for (const key of SUBJECT_OPTIONS.filter((name) => def[name] !== undefined)) {
+    if (def.subjectField === undefined) return `${key} needs a subjectField`;
+    if (!SUBJECT_VALUES[key].includes(def[key])) return `${key} must be one of: ${SUBJECT_VALUES[key].join(', ')}`;
+  }
+  return null;
+}
+
 /** Personal fields without a subject field (LEDGER_SUBJECT_REQUIRED). */
 export const needsSubject = (def) => personalOf(def).length > 0 && def.subjectField === undefined;
 
@@ -55,7 +68,10 @@ export function completeDefinition(def, createdAtMs) {
     lockMode: def.lockMode ?? 'governance',
     personalFields: [...personalOf(def)],
   };
-  if (def.subjectField !== undefined) out.subjectField = def.subjectField;
+  if (def.subjectField !== undefined) {
+    out.subjectField = def.subjectField;
+    for (const key of SUBJECT_OPTIONS) out[key] = def[key] ?? SUBJECT_DEFAULTS[key];
+  }
   out.anchor = def.anchor === undefined ? { type: 'none' } : { ...def.anchor };
   out.createdAt = new Date(createdAtMs).toISOString();
   return out;

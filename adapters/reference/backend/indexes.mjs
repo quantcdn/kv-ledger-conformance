@@ -34,7 +34,8 @@ export function indexSettings(given = {}) {
   return settings;
 }
 
-export function createIndexes(core, settings = indexSettings()) {
+// checkDeclare(store, def): the rules of a new index against the ledgers of the store (ledgers.checkIndex).
+export function createIndexes(core, settings = indexSettings(), { checkDeclare = () => {} } = {}) {
   const validation = (message, details) => core.error('VALIDATION', message, details);
 
   // Live items in collections the index covers: [{ key, record }].
@@ -88,6 +89,7 @@ export function createIndexes(core, settings = indexSettings()) {
     if (problem !== null) throw validation(problem);
     const def = normalized(given);
     checkRoom(store, def);
+    checkDeclare(store, def);
     const entry = { def, activeAt: core.now() + settings.activationMs, state: 'BUILDING' };
     store.indexes.set(def.name, entry);
     if (wait || settings.initialState === 'ACTIVE') activate(store, entry);

@@ -4,10 +4,12 @@
 import { ERROR_CODES } from '../../../lib/error-contract.mjs';
 import { createUlid } from './ulid.mjs';
 
-/** A store record. archives and digests belong to the simulated archive (archive.mjs). */
+/** A store record. archives and digests belong to the simulated archive (archive.mjs); the subject maps to the
+ *  ledger subjects (subject-keys.mjs; shreds: subject-shred.mjs). subjectKeys holds the keys of the retired format. */
 export function newStore(id, format) {
   return { id, format, items: new Map(), idempotency: new Map(), indexes: new Map(), ledgers: new Map(),
-    chains: new Map(), subjectKeys: new Map(), archives: new Map(), digests: new Map() };
+    chains: new Map(), subjectKeys: new Map(), archives: new Map(), digests: new Map(), subjectRefKeys: new Map(),
+    subjectRefs: new Map(), subjectTokens: new Map(), subjectListings: new Map(), shreds: new Map() };
 }
 
 function makeError(KVError) {

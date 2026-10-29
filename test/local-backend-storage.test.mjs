@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createLocalBackend } from '../adapters/reference/backend/index.mjs';
 import { createAdapter } from '../adapters/reference/index.mjs';
+import { createPersistence } from '../adapters/reference/backend/persist.mjs';
 import { createVirtualClock } from '../lib/clock.mjs';
 import { createKVErrorClass } from '../lib/kv-error.mjs';
 
@@ -311,4 +312,59 @@ test('storage needs load and save or transaction (review 8)', () => {
 test('index settings ignore undefined values (review 9)', () => {
   const { backend } = indexed({ initialState: undefined, activationMs: undefined, listLagMs: undefined });
   assert.equal(backend.declareIndex('s', BY_T, { wait: false }).state, 'BUILDING');
+});
+
+test('a write with a storage hook takes one snapshot (the one it saves), not a second copy for a failed save', async () => {
+  const counting = () => {
+    const state = { snapshots: 0, data: { n: 0 } };
+    state.snapshot = () => {
+      state.snapshots += 1;
+      return { ...state.data };
+    };
+    state.restore = (data) => {
+      state.data = { ...data };
+    };
+    return state;
+  };
+  const perWrite = async (persisted, state) => {
+    const before = state.snapshots;
+    await persisted(() => { state.data.n += 1; });
+    return state.snapshots - before;
+  };
+
+  // save: the first write on an empty disk also keeps a copy to fall back on; after that, one snapshot per write.
+  const sync = counting();
+  let disk = null;
+  const saving = createPersistence({ load: () => disk, save: (s) => { disk = s; } }, sync);
+  saving.start();
+  assert.equal(await perWrite(saving.persisted, sync), 2, 'empty disk: the fallback copy and the save');
+  assert.deepEqual([await perWrite(saving.persisted, sync), await perWrite(saving.persisted, sync)], [1, 1]);
+  const loaded = counting();
+  const fromDisk = createPersistence({ load: () => disk, save: (s) => { disk = s; } }, loaded);
+  fromDisk.start();
+  assert.equal(await perWrite(fromDisk.persisted, loaded), 1, 'a loaded disk state is the fallback');
+  fromDisk.forget();
+  assert.equal(await perWrite(fromDisk.persisted, loaded), 2, 'after a restore from outside, a copy again');
+
+  // transaction: the fresh snapshot is the fallback, so one snapshot per write once the disk has a state.
+  const tx = counting();
+  let shared = null;
+  const transacting = createPersistence({ load: () => shared, async transaction(run) { shared = await run(shared); } }, tx);
+  transacting.start();
+  assert.equal(await perWrite(transacting.persisted, tx), 2, 'empty disk');
+  assert.deepEqual([await perWrite(transacting.persisted, tx), await perWrite(transacting.persisted, tx)], [1, 1]);
+  assert.equal(shared.n, 3);
+
+  // A failed save still goes back to the disk state, from the fallback when load gives null.
+  const failing = counting();
+  let fail = false;
+  let kept = null;
+  const flaky = createPersistence({ load: () => (fail ? null : kept), save: (s) => {
+    if (fail) throw new Error('disk full');
+    kept = s;
+  } }, failing);
+  await perWrite(flaky.persisted, failing);
+  fail = true;
+  assert.throws(() => flaky.persisted(() => { failing.data.n += 1; }), /disk full/);
+  assert.equal(failing.data.n, 1, 'back to the state last saved');
 });

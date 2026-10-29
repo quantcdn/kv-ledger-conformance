@@ -13,11 +13,11 @@ test('capabilities: shortPages only for a scan budget of at most LIMITS.shortPag
   assert.equal((await at(1)).capabilities.shortPages, true);
 });
 
-test('capabilities: shortPages false with the default scan budget; later features false', async () => {
+test('capabilities: shortPages false with the default scan budget; subjectV1 true', async () => {
   const full = await createAdapter({ clock: createVirtualClock() });
   assert.equal(full.capabilities.shortPages, false);
   assert.equal(full.capabilities.virtualClock, true);
-  assert.equal(full.capabilities.subjectV1, false);
+  assert.equal(full.capabilities.subjectV1, true);
   assert.equal(full.capabilities.indexBuildStates, true);
   assert.equal(full.capabilities.eventualIndexLists, false);
   const short = await createAdapter({ clock: createVirtualClock(), budgetRows: 3 });
