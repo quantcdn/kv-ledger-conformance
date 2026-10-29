@@ -68,7 +68,10 @@ const count = (n) => Number.isSafeInteger(n) && n >= 0;
 const isManifestEntry = (m) => isObj(m) && text(m.key) && text(m.versionId) && HEX64.test(m.sha256) && count(m.count);
 const isResidual = (x) => isObj(x) && RESIDUAL_KINDS.has(x.kind)
   && (x.kind === 'customer-bucket-anchor-copies' ? text(x.bucketArn) : ISO_T.test(x.until));
-const isLedgerRec = (l) => isObj(l) && text(l.name) && text(l.definitionHash) && ['GOVERNANCE', 'COMPLIANCE'].includes(l.lockMode) && Number.isSafeInteger(l.retentionDays);
+// lockMode is the ledger's lockMode as declared ('governance' | 'compliance'). The platform signs it in lowercase
+// (spec: storeRecord.ledgers[].lockMode = ledger lockMode); upper case is accepted too.
+const LOCK_MODES = new Set(['governance', 'compliance', 'GOVERNANCE', 'COMPLIANCE']);
+const isLedgerRec = (l) => isObj(l) && text(l.name) && text(l.definitionHash) && LOCK_MODES.has(l.lockMode) && Number.isSafeInteger(l.retentionDays);
 const manifestOk = (o) => Array.isArray(o.manifest) && o.manifest.every(isManifestEntry) && o.manifestSha256 === entriesSha256(o.manifest);
 const PURGE_CHECKS = [
   [(r) => r.v === 1, 'v is not 1'],

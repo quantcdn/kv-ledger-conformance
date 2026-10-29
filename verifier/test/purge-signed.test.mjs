@@ -28,7 +28,7 @@ const FAULTS = {
   'requestedBy agent:foo': (r) => { r.requestedBy = 'agent:foo'; },
   'requestedBy user:abc': (r) => { r.requestedBy = 'user:abc'; },
   'a ledger record without definitionHash': (r) => { delete r.storeRecord.ledgers[0].definitionHash; },
-  'a ledger record with a bad lockMode': (r) => { r.storeRecord.ledgers[0].lockMode = 'governance'; },
+  'a ledger record with a bad lockMode': (r) => { r.storeRecord.ledgers[0].lockMode = 'legal-hold'; },
   'a ledger record with a fractional retentionDays': (r) => { r.storeRecord.ledgers[0].retentionDays = 1.5; },
   'chain.firstDigest missing': (r) => { delete r.chain.firstDigest; },
   'completedAt date only': (r) => { r.completedAt = '2026-10-24'; },

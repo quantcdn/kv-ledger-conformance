@@ -62,7 +62,7 @@ export async function buildPurge({ pageLines = 10_000 } = {}) {
   const receipt = {
     v: 1, type: 'kv-ledger-archive-purge-receipt', purgeId: PURGE_ID, org: ORG, store: STORE, scope: 'store', requestedBy: 'user:12',
     requestedAt: '2026-10-24T00:00:00.000Z', completedAt: '2026-10-24T01:00:00.000Z',
-    storeRecord: { deletedAt: '2026-10-22T00:00:00.000Z', ledgers: [{ name: 'aiUse', definitionHash: sha('def'), lockMode: 'GOVERNANCE', retentionDays: 2555 }], source: 'tombstone' },
+    storeRecord: { deletedAt: '2026-10-22T00:00:00.000Z', ledgers: [{ name: 'aiUse', definitionHash: sha('def'), lockMode: 'governance', retentionDays: 2555 }], source: 'tombstone' },
     chain: { digestCount: digestsOf.filter((l) => l.key.endsWith('.json')).length, firstDigest: 'first', lastDigest: last.name.replace(/\.json$/, ''), lastDigestHash: last.hash, anchorDays: 1 },
     objects: { count: lines.length, bytes: lines.reduce((n, l) => n + l.size, 0), ledgerObjects: count(/^ledgers\//), digestObjects: count(/^digests\/.*\.json(\.sig)?$/),
       anchorObjects: count(/^digests\/.*\/anchors\//), latestRetainUntil: '2026-10-20T00:00:00Z', manifest, manifestSha256: sha(canonicalJson(manifest)) },
