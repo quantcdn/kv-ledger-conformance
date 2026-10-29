@@ -1,65 +1,83 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 QuantCDN Pty Ltd
-// Reads of ledger entries (ledgers page "Append and Read", "Personal Fields and Shredding").
-// A ledger record in store.items: { raw (the value as stored, personal fields sealed), stored (the stored envelope
-// string that is hashed), encrypted: false, createdAt, updatedAt (both `at`), expiresAt: null, personal (sealed
-// field names), subjectKeyId, ledger: { name, collection, id, shard, seq, at, hash, prevHash, source } }.
-// get, getEntry, getMany, a ledger list, a list by index and getBy open personal fields; scan, prefix and pattern
-// lists show '[PERSONAL]' and name the fields in `personal`. A field whose subject key is gone reads as shredded.
+// Reads of ledger entries (ledgers page "Append and Read", "Personal Fields and Shredding"; subject contract v1).
+// A ledger record in store.items: { raw (the value as stored: personal fields sealed, and the subject token with the
+// sealed $subject or $subjectTag), stored (the stored envelope string that is hashed), encrypted: false, createdAt,
+// updatedAt (both `at`), expiresAt: null, personal (sealed field names), ledger: { name, collection, id, shard, seq,
+// at, hash, prevHash, source } }.
+// get, getEntry, getMany, a ledger list, a list by index and getBy open the sealed fields (subject-value.mjs); scan,
+// prefix and pattern lists show '[PERSONAL]', leave $subject out and name the fields in `personal`. A field whose
+// subject key is shredded reads { $shredded: true }. A ledger of the retired subject format refuses a decrypted read.
 import { byteCompare } from '../../../lib/check-util.mjs';
 import { timeMs } from '../../../lib/query-checks.mjs';
-import { fieldAad, openField } from './ledger-seal.mjs';
+import { fieldAad } from './ledger-seal.mjs';
+import {
+  hasSealed, isRetiredFormat, LEDGER_FORMAT_RETIRED_MESSAGE, openedValue, openSealed, sealedValue, subjectModeOf, tokenOf,
+} from './subject-value.mjs';
 
-const PERSONAL_TEXT = '[PERSONAL]';
-const SHREDDED = Object.freeze({ $shredded: true });
 const has = (o, name) => Object.hasOwn(o, name);
 
-/** The ledger block that reads show: no collection, no version. */
-export function ledgerBlock(record) {
+/** The ledger block that reads show: no collection, no version; `subject` when the ledger has a subject field. */
+export function ledgerBlock(record, def) {
   const { name, id, shard, seq, at, hash, prevHash, source } = record.ledger;
   const block = { name, id, shard, seq, at, hash, prevHash };
   if (source !== undefined) block.source = { ...source };
+  const subject = def === undefined ? undefined : subjectModeOf(def);
+  if (subject !== undefined) block.subject = subject;
   return block;
 }
 
-export function createLedgerViews(core) {
-  function openValue(store, record) {
-    const value = JSON.parse(record.raw);
-    const keyText = store.subjectKeys.get(record.subjectKeyId);
-    const { collection, id } = record.ledger;
-    for (const field of record.personal ?? []) {
-      if (keyText === undefined) {
-        value[field] = { ...SHREDDED };
-        continue;
-      }
-      const aad = fieldAad({ org: core.org, store: store.id, collection, id, field });
-      value[field] = JSON.parse(openField({ key: Buffer.from(keyText, 'base64'), aad, envelope: value[field] }));
-    }
-    return value;
+export function createLedgerViews(core, subjects) {
+  const unavailable = (message, key) => core.error('UNAVAILABLE', message, { key, retryable: false });
+  const definitionOf = (store, record) => store.ledgers.get(record.ledger.name)?.definition;
+
+  // A sealed entry names its subject by a token; a token with no key row is lost key data: never guess.
+  function keyOf(store, def, key, value) {
+    const token = tokenOf(def, value);
+    if (token === undefined) throw unavailable('A sealed ledger entry has no subject token', key);
+    const keys = subjects.keysForRead(store, def.name, [token]);
+    if (!keys.has(token)) throw unavailable('The subject key of a ledger entry is missing', key);
+    return keys.get(token);
   }
 
-  function maskedValue(record) {
+  function opener(store, record, subjectKey) {
+    const { collection, id } = record.ledger;
+    return (sealed, field) => {
+      try {
+        return openSealed(sealed, subjectKey, fieldAad({ org: core.org, store: store.id, collection, id, field }));
+      } catch {
+        throw unavailable('A personal field of this ledger entry failed its integrity check', `${collection}:${id}`);
+      }
+    };
+  }
+
+  function openValue(store, key, record) {
+    const def = definitionOf(store, record);
+    if (isRetiredFormat(def)) throw core.error('LEDGER_FORMAT_RETIRED', LEDGER_FORMAT_RETIRED_MESSAGE);
     const value = JSON.parse(record.raw);
-    for (const field of record.personal ?? []) value[field] = PERSONAL_TEXT;
-    return value;
+    if (!hasSealed(value, def)) return value;
+    const subjectKey = keyOf(store, def, key, value);
+    return openedValue(def, value, subjectKey, opener(store, record, subjectKey));
   }
 
   /** The read view of get/getEntry/getMany/getBy: { key, raw, encrypted, createdAt, updatedAt, ledger }. */
   function view(store, key, record) {
-    return { key, raw: JSON.stringify(openValue(store, record)), encrypted: false, createdAt: record.createdAt,
-      updatedAt: record.updatedAt, ledger: ledgerBlock(record) };
+    return { key, raw: JSON.stringify(openValue(store, key, record)), encrypted: false, createdAt: record.createdAt,
+      updatedAt: record.updatedAt, ledger: ledgerBlock(record, definitionOf(store, record)) };
   }
 
   /** A list item. decrypt: a ledger list or a list by index; otherwise personal fields are masked. */
   function item(store, key, record, { includeValues, decrypt }) {
+    const def = definitionOf(store, record);
     const out = { key, encrypted: false, createdAt: record.createdAt, updatedAt: record.updatedAt,
-      ledger: ledgerBlock(record) };
+      ledger: ledgerBlock(record, def) };
     if ((record.personal ?? []).length > 0) out.personal = [...record.personal];
-    if (includeValues === true) out.value = decrypt ? openValue(store, record) : maskedValue(record);
+    if (includeValues !== true) return out;
+    out.value = decrypt ? openValue(store, key, record) : sealedValue(def, JSON.parse(record.raw)).value;
     return out;
   }
 
-  return { view, item };
+  return { view, item, openValue, definitionOf };
 }
 
 /** Merge order of a ledger list: at, then shard, then id. */

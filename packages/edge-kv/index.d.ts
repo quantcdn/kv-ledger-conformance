@@ -94,8 +94,94 @@ export interface IndexDefinition {
 export interface LedgerDefinition {
   name: string;
   collection: string;
+  chains?: number;
   retentionDays?: number;
+  lockMode?: 'governance' | 'compliance';
+  /** Fields sealed with the subject's key. They need subjectField. */
+  personalFields?: string[];
+  /** The field that holds the data subject id. */
+  subjectField?: string;
+  /** With subjectField. Default 'pseudonym': the field stores a token and reads show the value as appended. Immutable. */
+  subjectMode?: 'pseudonym' | 'clear';
+  /** With subjectField. Default 'exact'; 'fold' makes the id case-insensitive. Immutable. */
+  subjectCase?: 'exact' | 'fold';
   [field: string]: unknown;
+}
+
+/** A ledger of a store, as backend.ledgers lists it (a copy). */
+export interface LedgerListing {
+  name: string;
+  state: 'PENDING' | 'ACTIVE' | 'DROPPED' | 'FAILED';
+  /** ISO 8601. Only when PENDING. */
+  activeAfter?: string;
+  /** The completed definition: v, name, collection, chains, retentionDays, lockMode, personalFields, subjectField?,
+   * subjectMode?, subjectCase?, anchor, createdAt. */
+  definition: Required<Pick<LedgerDefinition, 'name' | 'collection' | 'chains' | 'retentionDays' | 'lockMode' | 'personalFields'>>
+    & LedgerDefinition & { v: 1; anchor: Record<string, unknown>; createdAt: string };
+}
+
+/** An index of a store, as backend.indexes lists it (a copy). */
+export interface IndexListing {
+  name: string;
+  state: IndexState;
+  /** The backfill error of a FAILED index, for example 'UNIQUE_VIOLATION'. */
+  error?: string;
+  /** The normalized definition: unique and count are booleans. */
+  definition: IndexDefinition & { unique: boolean; count: boolean };
+}
+
+/** The body of a shred, as the platform route POST …/ledgers/{name}/shred takes it. */
+export interface ShredRequest {
+  subjectId: string | number;
+  reason: string;
+  authority: string;
+  requestedBy: string;
+}
+
+/** The shred receipt: `json` (RFC 8785) signed with the local archive key. Check it with verify.mjs verify-signed. */
+export interface SignedReceipt {
+  json: string;
+  signature: string;
+  keyId: string;
+  algorithm: 'ECDSA_SHA_256';
+}
+
+export interface ShredResult {
+  ledger: string;
+  subjectRef: string;
+  refKeyVersion: number;
+  shredId: string;
+  /** The receipts of the shred entries this call appended (empty on a repeat). */
+  entries: Array<Record<string, unknown>>;
+  shreddedAt: string;
+  fullyErasedAfter: string;
+  receipt: SignedReceipt;
+  alreadyShredded?: true;
+}
+
+/** The body of POST …/ledgers/{name}/subject-entries. since and until: epoch ms or ISO 8601. */
+export interface SubjectEntriesRequest {
+  subjectId: string | number;
+  collection?: string;
+  since?: number | string;
+  until?: number | string;
+  /** 1 to 1000. Default 100. */
+  limit?: number;
+  nextToken?: string;
+  /** Default 'decrypted'. */
+  personal?: 'decrypted' | 'sealed';
+}
+
+export interface SubjectEntries {
+  ledger: string;
+  subjectState: 'live' | 'shredded';
+  entries: Array<{ key: string; value: unknown; encrypted: false; created_at: string; updated_at: string;
+    ledger: Record<string, unknown>; personal?: string[] }>;
+  complete: boolean;
+  nextToken?: string;
+  /** Only when shredded: the erasure record ids. */
+  shreds?: string[];
+  earlierGenerationsShredded: number;
 }
 
 /** The admin and control surface of the local backend. The kvStore methods use the rest. */
@@ -111,6 +197,14 @@ export interface LocalBackend {
   setIndexState(storeId: string, name: string, state: IndexState): MaybePromise<{ name: string; state: IndexState }>;
   declareLedger(storeId: string, def: LedgerDefinition, options?: { wait?: boolean }): MaybePromise<{ activeAfter: string; [field: string]: unknown }>;
   dropLedger(storeId: string, name: string): MaybePromise<unknown>;
+  /** The ledgers of the store, each state brought up to the clock. A read. STORE_NOT_FOUND for an unknown store. */
+  ledgers(storeId: string): LedgerListing[];
+  /** The indexes of the store, each state brought up to the clock. A read. STORE_NOT_FOUND for an unknown store. */
+  indexes(storeId: string): IndexListing[];
+  /** Shreds a data subject of a ledger: shred entries, then the key is destroyed. A write. */
+  shred(storeId: string, ledger: string, body: ShredRequest): MaybePromise<ShredResult>;
+  /** The entries of one data subject (the live key generation), or the erasure records of a shredded one. A read. */
+  subjectEntries(storeId: string, ledger: string, body: SubjectEntriesRequest): SubjectEntries;
   /** Archives every unarchived ledger entry of the store now. */
   archiveNow(storeId: string): MaybePromise<true>;
   /** The PEM of the local P-256 key that signs the archive digests. */

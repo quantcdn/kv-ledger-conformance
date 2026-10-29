@@ -15,7 +15,10 @@
 //                        storage.load() when it returns true (for example an mtime check).
 //
 // When the save fails (save or transaction throws after the write ran), the state in memory goes back to the disk
-// state (load(), or the state before the write when load gives null or throws), and the write throws the error.
+// state: load(), or, when load gives null or throws, the fresh snapshot of the transaction or the snapshot that this
+// hook last saved or loaded. Only when none of them exists (the first write on an empty disk, or the first write
+// after backend.restore()) does a write take a snapshot before it runs. So a write takes one snapshot (the one it
+// saves) in the steady state.
 
 // load(), or the fallback when load gives null or throws.
 function diskOr(storage, fallback) {
@@ -26,11 +29,12 @@ function diskOr(storage, fallback) {
   }
 }
 
-// Each write reloads a changed snapshot first, and saves afterwards, also when it throws.
-function savedAfter(storage, { snapshot, restore }, refresh) {
+// Each write reloads a changed snapshot first, and saves afterwards, also when it throws. known.state: the snapshot
+// last saved or loaded (the disk state).
+function savedAfter(storage, { snapshot, restore }, refresh, known) {
   return (work) => {
     refresh();
-    const before = snapshot();
+    const before = known.state === undefined ? snapshot() : undefined;
     let outcome;
     try {
       outcome = { value: work() };
@@ -38,9 +42,11 @@ function savedAfter(storage, { snapshot, restore }, refresh) {
       outcome = { error };
     }
     try {
-      storage.save(snapshot());
+      const next = snapshot();
+      storage.save(next);
+      known.state = next;
     } catch (error) {
-      restore(diskOr(storage, before));
+      restore(diskOr(storage, known.state ?? before));
       throw error;
     }
     if ('error' in outcome) throw outcome.error;
@@ -48,14 +54,15 @@ function savedAfter(storage, { snapshot, restore }, refresh) {
   };
 }
 
-// One write inside storage.transaction: { value } or { error } of the work, or the error of the save.
+// One write inside storage.transaction: { value } or { error } of the work, or the error of the save. The fresh
+// snapshot is the disk state before the write; a snapshot is taken only when the disk has none.
 async function transactOnce(storage, { snapshot, restore }, work) {
   let outcome;
   let before;
   try {
     await storage.transaction(async (fresh) => {
       if (fresh) restore(fresh);
-      before = snapshot();
+      before = fresh || snapshot();
       try {
         outcome = { value: work() };
       } catch (error) {
@@ -93,18 +100,26 @@ function checkStorage(storage) {
   if (!writes) throw new TypeError('storage needs save() or transaction()');
 }
 
-/** { persisted(work), refresh() } for the storage hook. persisted runs a write; refresh runs before a read. */
+/**
+ * { persisted(work), refresh(), start(), forget() } for the storage hook. persisted runs a write; refresh runs before
+ * a read; start loads the disk state when the backend is made; forget is called after a restore from outside.
+ */
 export function createPersistence(storage, state) {
-  if (!storage) return { persisted: (work) => work(), refresh: () => {} };
+  if (!storage) return { persisted: (work) => work(), refresh: () => {}, start: () => {}, forget: () => {} };
   checkStorage(storage);
   const flight = { count: 0 };
-  const refresh = () => {
-    if (flight.count > 0 || typeof storage.changed !== 'function' || !storage.changed()) return;
+  const known = { state: undefined };
+  const load = () => {
     const loaded = storage.load();
     if (loaded) state.restore(loaded);
+    known.state = loaded || undefined;
+  };
+  const refresh = () => {
+    if (flight.count > 0 || typeof storage.changed !== 'function' || !storage.changed()) return;
+    load();
   };
   const persisted = typeof storage.transaction === 'function'
     ? inTransaction(storage, state, flight)
-    : savedAfter(storage, state, refresh);
-  return { persisted, refresh };
+    : savedAfter(storage, state, refresh, known);
+  return { persisted, refresh, start: load, forget: () => { known.state = undefined; } };
 }

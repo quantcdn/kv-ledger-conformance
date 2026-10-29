@@ -9,6 +9,9 @@
 // proof: the PKCS#8 PEM of the local P-256 archive signing key; generated when absent),
 // storage ({ load(): snapshot | null, save(snapshot), transaction?, changed? }: see persist.mjs),
 // indexes ({ initialState: 'BUILDING' | 'ACTIVE', activationMs, listLagMs }: see indexes.mjs).
+// Ledger subjects (subject contract v1; docs/subject-v1-local.md): shred(storeId, ledger, body) and
+// subjectEntries(storeId, ledger, body) are the platform's ledger routes, not edge kvStore calls.
+// ledgers(storeId) and indexes(storeId) list the declarations of a store (read-only copies).
 import { LIMITS } from '../../../lib/limits.mjs';
 import { createKVErrorClass } from '../../../lib/kv-error.mjs';
 import { createCore, newStore } from './core.mjs';
@@ -22,6 +25,10 @@ import { createLedgerViews } from './ledger-views.mjs';
 import { createLedgers } from './ledgers.mjs';
 import { createQuery } from './query.mjs';
 import { createSealer } from './secret.mjs';
+import { createSubjectEntries } from './subject-entries.mjs';
+import { createSubjectKeys } from './subject-keys.mjs';
+import { createSubjectQuery } from './subject-query.mjs';
+import { createShred } from './subject-shred.mjs';
 import { createPersistence } from './persist.mjs';
 import { applySnapshot, takeSnapshot } from './snapshot.mjs';
 import { createTransactions } from './transact.mjs';
@@ -92,9 +99,15 @@ function createIndexCalls(core, values, indexes, { persisted, refresh }) {
   };
 }
 
-// Status and proof calls can run the archive (lazily, by the clock), so they save too.
-function createLedgerCalls(core, ledgers, appends, archive, persisted) {
+// Status and proof calls can run the archive (lazily, by the clock), so they save too. A shred is a write; the
+// subject entries are a read.
+function createLedgerCalls(core, { ledgers, appends, archive, shred, entries }, { persisted, refresh }) {
   return {
+    shred: (storeId, name, body) => persisted(() => shred.shred(storeId, name, body)),
+    subjectEntries(storeId, name, body) {
+      refresh();
+      return entries.subjectEntries(storeId, name, body);
+    },
     declareLedger: (storeId, def, options) => persisted(() => ledgers.declareLedger(storeId, def, options)),
     dropLedger: (storeId, name) => persisted(() => ledgers.dropLedger(storeId, name)),
     append: (storeId, collection, value, options) => persisted(() => appends.append(storeId, collection, value, options)),
@@ -133,6 +146,33 @@ function createStoreAdmin(core, { persisted, refresh }) {
   };
 }
 
+// Read-only listings of the ledgers and indexes of a store, with each state brought up to the clock. Copies only.
+function createListings(core, { ledgers, indexes }, refresh) {
+  const iso = (ms) => new Date(ms).toISOString();
+  function ledgerRow(store, entry) {
+    const { state } = ledgers.refreshed(store, entry);
+    const row = { name: entry.definition.name, state };
+    if (state === 'PENDING') row.activeAfter = iso(entry.activeAfterMs);
+    return { ...row, definition: structuredClone(entry.definition) };
+  }
+  function indexRow(store, entry) {
+    const { state, error } = indexes.refreshed(store, entry);
+    return { name: entry.def.name, state, ...(error ? { error } : {}), definition: structuredClone(entry.def) };
+  }
+  return {
+    ledgers(storeId) {
+      refresh();
+      const store = core.needStore(storeId);
+      return [...store.ledgers.values()].map((entry) => ledgerRow(store, entry));
+    },
+    indexes(storeId) {
+      refresh();
+      const store = core.needStore(storeId);
+      return [...store.indexes.values()].map((entry) => indexRow(store, entry));
+    },
+  };
+}
+
 // Local keys (secret, cursor, proof), replaced on restore. The modules hold forwarding objects, not the keys.
 function createKeyring(core, keys = {}) {
   let sealer = createSealer(keys.secret);
@@ -160,19 +200,29 @@ export function createLocalBackend(options = {}) {
   const keyring = createKeyring(core, keys);
 
   const snapshot = () => takeSnapshot(core, keyring.current());
-  const restore = (data) => keyring.replace(applySnapshot(core, data));
-  const persistence = createPersistence(storage, { snapshot, restore });
+  const apply = (data) => keyring.replace(applySnapshot(core, data));
+  const persistence = createPersistence(storage, { snapshot, restore: apply });
   const { persisted, refresh } = persistence;
+  const restore = (data) => {
+    apply(data);
+    persistence.forget();
+  };
 
-  const indexes = createIndexes(core, indexSettings(options.indexes));
   const archive = createArchive(core, keyring.signer);
   const ledgers = createLedgers(core, { archive });
-  const ledgerViews = createLedgerViews(core);
+  const indexes = createIndexes(core, indexSettings(options.indexes), { checkDeclare: ledgers.checkIndex });
+  const subjects = createSubjectKeys(core);
+  const ledgerViews = createLedgerViews(core, subjects);
   const rules = { ...createWriteRules(core, indexes), checkMutable: ledgers.checkMutable };
   const values = createValues(core, keyring.sealer, rules, ledgerViews);
   const faults = createFaults(core);
   const { transact } = createTransactions(core, values, faults);
-  const { query } = createQuery(core, { budgetRows, cursors: keyring.cursors, indexes, ledgers, ledgerViews });
+  const subjectQuery = createSubjectQuery(core, { ledgers, subjects });
+  const { query } = createQuery(core, { budgetRows, cursors: keyring.cursors, indexes, ledgers, ledgerViews, subjectQuery });
+  const appends = createAppend(core, ledgers, faults, subjects);
+  const ledgerParts = { ledgers, appends, archive,
+    shred: createShred(core, { ledgers, subjects, appends, signer: keyring.signer }),
+    entries: createSubjectEntries(core, { ledgers, subjects, ledgerViews, cursors: keyring.cursors, indexes }) };
 
   const backend = {
     ...createStoreAdmin(core, persistence),
@@ -184,7 +234,8 @@ export function createLocalBackend(options = {}) {
       return query(...args);
     },
     ...createIndexCalls(core, values, indexes, persistence),
-    ...createLedgerCalls(core, ledgers, createAppend(core, ledgers, faults), archive, persisted),
+    ...createListings(core, { ledgers, indexes }, refresh),
+    ...createLedgerCalls(core, ledgerParts, persistence),
     publicKey: () => keyring.publicKey(),
     injectFault: (fault) => faults.inject(fault),
     now: () => core.now(),
@@ -196,7 +247,6 @@ export function createLocalBackend(options = {}) {
     restore,
   };
 
-  const loaded = storage ? storage.load() : null;
-  if (loaded) restore(loaded);
+  persistence.start();
   return backend;
 }

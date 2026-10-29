@@ -287,7 +287,8 @@ It has two layers:
 - **The local backend** (`adapters/reference/backend/`). It has store-id-first methods that take checked arguments
   and return plain data, or throw a `KVError` with the store-level status. It holds stores, versions, TTL,
   indexes, transactions with idempotency, list pages and budgets, ledgers with the hash chain, a simulated archive
-  with signed digests and proofs, sealed personal fields, secret values and fault injection.
+  with signed digests and proofs, the ledger subject contract version 1 (subject pseudonyms, sealed personal fields,
+  shreds with signed receipts), secret values and fault injection.
 
 The backend never imports the edge layer. An emulator can use the backend alone behind its own edge layer.
 
@@ -326,6 +327,18 @@ const kvStore = buildKvStore(calls, KVError); // give this to the edge function 
 
 The adapter also returns `backend`. `backend.snapshot()` and `backend.restore(snapshot)` save and load the full state.
 
+The backend also lists the declarations of a store, read-only:
+
+- `backend.ledgers(storeId)`: the ledgers of the store, `[{ name, state, activeAfter?, definition }]`. `state` is
+  `'PENDING'`, `'ACTIVE'`, `'DROPPED'` or `'FAILED'`; `activeAfter` (ISO 8601) is only on a `PENDING` ledger;
+  `definition` is the completed definition (with `personalFields`, and `subjectField`, `subjectMode` and `subjectCase`
+  for a subject ledger).
+- `backend.indexes(storeId)`: the indexes of the store, `[{ name, state, error?, definition }]`. `state` is
+  `'BUILDING'`, `'ACTIVE'` or `'FAILED'`; `error` names the backfill error of a `FAILED` index; `definition` is the
+  normalized definition.
+- Both are reads: they bring each state up to the clock (and reload a changed snapshot first, with `changed()`),
+  return copies, and throw `STORE_NOT_FOUND` for an unknown store. Use them instead of reading `snapshot()`.
+
 ### Storage hook
 
 The backend does no I/O. The storage hook does the I/O. It has four functions:
@@ -342,10 +355,13 @@ it, two processes that write at the same time can overwrite each other's writes,
 covers the full snapshot.
 
 When a save fails (`save` or `transaction` throws after the write ran), the backend puts its memory back to the disk
-state and the write throws the error.
+state and the write throws the error. The disk state is `load()`, or, when `load()` gives `null` or throws, the fresh
+snapshot of the transaction or the snapshot that the backend last saved or loaded. So a write makes one copy of the
+full snapshot (the one it saves). It makes a second copy only when there is no disk state yet: the first write on an
+empty disk, or the first write after `backend.restore()`.
 
 > **Caution:** With `transaction`, every write method of the backend returns a promise, and the admin calls do too
-> (`createStore`, `declareIndex`, `dropIndex`, `setIndexState`, `declareLedger`, `setClock`, `reset`).
+> (`createStore`, `declareIndex`, `dropIndex`, `setIndexState`, `declareLedger`, `shred`, `setClock`, `reset`).
 > `ledgerStatus` and `ledgerProof` are writes too, because they can run the archive. Writes of one backend run in
 > the order of the calls. The edge layer and the adapter already await them. The other reads stay synchronous.
 
@@ -408,7 +424,25 @@ call: `'ACTIVE'` (with no backfill check), `'BUILDING'` or `'FAILED'`. Use it to
 
 The reference adapter passes every `bytes`, `core`, `ledger` and `proof-timing` case only with a small scan budget
 (`budgetRows` at most 10, for example 3). With the default budget, `core/iteration/short-pages` is skipped. It has
-`subjectV1: false` until the subject contract is stable.
+`subjectV1: true` and passes the `subject-v1` cases (`--tags subject-v1 --enable subject-v1`).
+
+### Ledger subjects (subject-v1)
+
+The local backend emulates the ledger subject contract, version 1, of the platform. See
+[docs/subject-v1-local.md](docs/subject-v1-local.md) for what it emulates and what it does not (for example, local keys
+in the snapshot in place of KMS, and no 202 answer).
+
+- `declareLedger` takes `subjectField`, `subjectMode` (`'pseudonym'`, the default, or `'clear'`), `subjectCase`
+  (`'exact'`, the default, or `'fold'`) and `personalFields`. `subjectMode` and `subjectCase` are immutable.
+- In `pseudonym` mode the subject field stores a token. Reads through `get`, `getEntry`, `getMany`, `getBy`, a ledger
+  list and a list by index show the value as appended, or `{ $shredded: true }` after a shred. `ledger.subject` is
+  `'pseudonym'` or `'clear'`.
+- `backend.shred(storeId, ledger, { subjectId, reason, authority, requestedBy })` and
+  `backend.subjectEntries(storeId, ledger, { subjectId, collection?, since?, until?, limit?, nextToken?, personal? })`
+  return the body of the platform routes `POST …/ledgers/{name}/shred` and `POST …/ledgers/{name}/subject-entries`.
+  The adapter has them as `admin.shred` and `admin.subjectEntries`. They are not on the edge `kvStore`.
+- The shred receipt is signed with the local archive key. `verify.mjs verify-signed` checks it with
+  `backend.publicKey()`.
 
 ## Run against the real edge runtime (edge harness)
 
@@ -561,7 +595,7 @@ reference adapter.
 | `core` | on | 116 | 228 pass, 1 skip | get/set/delete, getEntry/getMany, conditional writes, TTL, increment, atomic, list/search, collections, cursors, iteration, the handle, `KVError`, the error contract, limits, indexes, secrets, `verifyChain`. |
 | `ledger` | on | 26 | 52 pass | append, receipts, idempotency replay, chains, list windows, status, `verifyChain` over a ledger list, immutability, ledger errors, proof `pending`. |
 | `proof-timing` | off (slow) | 3 | 6 pass | proof `pending` to `archived`, signed proof checks, status after the archive. |
-| `subject-v1` | off, needs `--enable subject-v1` | 6 | skip (`subjectV1` false) | Subject pseudonym mode, version 1 of the subject contract. |
+| `subject-v1` | off, needs `--enable subject-v1` | 6 | 12 pass | Subject pseudonym mode, version 1 of the subject contract. |
 | `message-exact` | off | 0 | none | Exact message text. A case with this tag checks only messages. |
 
 The one `core` skip is `core/iteration/short-pages`. It passes with `budgetRows: 3`. The `subject-v1` group runs
@@ -572,7 +606,7 @@ only with both `--tags subject-v1` and `--enable subject-v1`.
 `run()` returns the report. `--json <file>` writes it.
 
 ```json
-{ "suite": "kv-conformance", "version": "0.1.0", "apiSurface": "edge kvStore d.ts of ...", "validatedAgainst": [],
+{ "suite": "kv-conformance", "version": "0.2.0", "apiSurface": "edge kvStore d.ts of ...", "validatedAgainst": [],
   "adapter": "reference", "capabilities": { "...": true }, "shapes": ["global", "handle"],
   "tags": ["bytes", "core", "ledger"], "startedAt": "...", "durationMs": 1234,
   "summary": { "total": 295, "pass": 285, "fail": 0, "skip": 10, "error": 0 },
@@ -626,12 +660,14 @@ type definitions. These are the known differences:
 
 - Rule, static and function vectors are not in this repository.
 - Format 1 cases (null or false on failure, legacy scan lists). The local backend accepts format 1 stores already.
-- The `subject-v1` cases run only after the subject contract is released and enabled.
-- Store upgrade, export, shred and verification reports. They are management features, not the edge surface.
+- The `subject-v1` cases are on by default only after the subject contract is released. Until then they need
+  `--enable subject-v1`.
+- Store upgrade, export and verification reports, and shred cases. They are management features, not the edge
+  surface. The local backend emulates the shred and the subject entries routes, but no case uses them.
 
 ## Versioning
 
-The suite version is `0.1.0` (`SUITE_VERSION` in `lib/version.mjs`). It stays 0.x until the KV v2 release ships to
+The suite version is `0.2.0` (`SUITE_VERSION` in `lib/version.mjs`). It stays 0.x until the KV v2 release ships to
 production. After that, the major and minor numbers follow the KV API release that the suite covers.
 
 `VALIDATED_AGAINST` in `lib/version.mjs` lists the runs against real builds: `{ target, build, date, result }`. It is

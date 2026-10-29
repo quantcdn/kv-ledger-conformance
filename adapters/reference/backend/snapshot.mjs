@@ -3,11 +3,14 @@
 // snapshot() and restore(snapshot): a JSON-safe copy of the backend state. Maps become arrays of [name, value]
 // pairs. The copy holds the local keys (secret and cursor), so a restored backend reads its secret values: this is
 // a local reference backend, not a production store. Later features add their per-store maps to STORE_MAPS.
-// Ledger subject keys are in the copy too (subjectKeys), for the same reason, and so is the archive signing key.
+// Ledger subject keys are in the copy too (the reference keys, the ref and token rows, the listings and the erasure
+// records; subjectKeys of the retired format), for the same reason, and so is the archive signing key. A snapshot
+// of an earlier version has no subject maps: they start empty.
 import { newStore } from './core.mjs';
 
 export const SNAPSHOT_VERSION = 1;
-const STORE_MAPS = ['items', 'idempotency', 'indexes', 'ledgers', 'chains', 'subjectKeys', 'archives', 'digests'];
+const STORE_MAPS = ['items', 'idempotency', 'indexes', 'ledgers', 'chains', 'subjectKeys', 'archives', 'digests',
+  'subjectRefKeys', 'subjectRefs', 'subjectTokens', 'subjectListings', 'shreds'];
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 

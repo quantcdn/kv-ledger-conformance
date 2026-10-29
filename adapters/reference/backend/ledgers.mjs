@@ -12,7 +12,10 @@ import { definitionHash } from '../../../lib/ledger-bytes.mjs';
 import { byteCompare } from '../../../lib/check-util.mjs';
 import { collectionOf } from './core.mjs';
 import { covers } from './index-defs.mjs';
-import { completeDefinition, ledgerDefinitionProblem, needsSubject, patternsOverlap } from './ledger-defs.mjs';
+import {
+  completeDefinition, ledgerDefinitionProblem, needsSubject, patternsOverlap, subjectOptionProblem,
+} from './ledger-defs.mjs';
+import { indexAgainstLedgers, ledgerAgainstIndexes } from './ledger-index-rules.mjs';
 
 /** The archive seam before archives exist: nothing is archived, every proof is pending. */
 export const NO_ARCHIVE = Object.freeze({
@@ -61,14 +64,28 @@ export function createLedgers(core, { archive = NO_ARCHIVE } = {}) {
     }
   }
 
-  function declareLedger(storeId, def, { wait = true } = {}) {
-    const store = core.needStore(storeId);
+  // [code, message] of a rule broken between indexes and ledgers: throws it.
+  const refuse = (problem) => {
+    if (problem !== null) throw core.error(problem[0], problem[1]);
+  };
+
+  function checkDefinition(def) {
     const problem = ledgerDefinitionProblem(def);
     if (problem !== null) throw core.error('VALIDATION', problem);
-    if (needsSubject(def)) throw core.error('LEDGER_SUBJECT_REQUIRED', 'personalFields need a subjectField');
+    if (needsSubject(def)) {
+      throw core.error('LEDGER_SUBJECT_REQUIRED', 'subjectField is required when personalFields is not empty');
+    }
+    const subject = subjectOptionProblem(def);
+    if (subject !== null) throw core.error('VALIDATION', subject);
+  }
+
+  function declareLedger(storeId, def, { wait = true } = {}) {
+    const store = core.needStore(storeId);
+    checkDefinition(def);
     checkRoom(store, def);
     const now = core.now();
     const definition = completeDefinition(def, now);
+    refuse(ledgerAgainstIndexes(definition, [...store.indexes.values()].map((e) => e.def)));
     const entry = { definition, definitionHash: definitionHash(definition), state: wait ? 'ACTIVE' : 'PENDING',
       activeAfterMs: now + LIMITS.ledgerActivationMs };
     store.ledgers.set(def.name, entry);
@@ -151,9 +168,13 @@ export function createLedgers(core, { archive = NO_ARCHIVE } = {}) {
     }
   }
 
+  /** The rules a new index (normalized definition) must follow against the ledgers (not FAILED) of the store. */
+  const checkIndex = (store, index) => refuse(indexAgainstLedgers(index,
+    entries(store).filter((e) => e.state !== 'FAILED').map((e) => e.definition)));
+
   /** True when a ledger (in any state but FAILED) covers the concrete collection. */
   const isLedgerCollection = (store, collection) => covering(store, collection) !== undefined;
 
   return { declareLedger, dropLedger, ledgerStatus, ledgerProof, covering, refreshed, checkMutable, isLedgerCollection,
-    iso };
+    checkIndex, needLedger, iso };
 }

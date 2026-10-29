@@ -28,7 +28,7 @@ Where they disagree, the suite follows `kvstore.d.ts` and the README lists the d
 - Credentials only from environment variables. Never logged, never in a report, never in an error message.
 - Licence: Apache-2.0 (`LICENSE`, `NOTICE`). `package.json`: name `@quantcdn/kv-ledger-conformance`,
   `"license": "Apache-2.0"`. Every source file starts with `// SPDX-License-Identifier: Apache-2.0` (after a shebang).
-- Version: `SUITE_VERSION = '0.1.0'` (semver), tied to the KV release: 0.x until the KV v2 release ships to
+- Version: `SUITE_VERSION = '0.2.0'` (semver), tied to the KV release: 0.x until the KV v2 release ships to
   production, then the major and minor follow the KV API release the suite covers. `VALIDATED_AGAINST = []`: a list of `{ target, build, date, result }`
   that the owner fills in after a run against a real build. The JSON report states both.
 
@@ -149,7 +149,7 @@ Each result has a status: `pass`, `fail`, `skip` (with the reason: a missing cap
 - Returns the report:
 
 ```json
-{ "suite": "kv-conformance", "version": "0.1.0", "apiSurface": "...", "validatedAgainst": [], "adapter": "reference",
+{ "suite": "kv-conformance", "version": "0.2.0", "apiSurface": "...", "validatedAgainst": [], "adapter": "reference",
   "capabilities": { "...": true }, "shapes": ["global", "handle"], "tags": ["bytes", "core", "ledger"],
   "startedAt": "...", "durationMs": 1234,
   "summary": { "total": 0, "pass": 0, "fail": 0, "skip": 0, "error": 0 },
@@ -238,10 +238,11 @@ instances[]` has an instance with the proof's `archiveKey` and that `merkleRoot`
 with `leafIndex = seq - fromSeq` and `treeSize = toSeq - fromSeq + 1`; (4) `signature` (base64 DER ECDSA P-256) verifies
 over SHA-256 of `canonicalJson(digest)` with `admin.proofPublicKey(storeId)`. The real platform key check is `verifier/verify.mjs verify-proof`.
 
-## 8. subject-v1 group (disabled)
+## 8. subject-v1 group (version-gated)
 
-Versioned group for the ledger subject pseudonym contract, still landing. Disabled until the owner enables it after
-release. Contents: `fixtures/subject-v1-vectors.json` (the canonicalisation vectors of the design: `" Alice@Example.COM "`
+Versioned group for the ledger subject pseudonym contract. It runs only with `--tags subject-v1` and `--enable
+subject-v1`. The reference adapter passes it (`subjectV1: true`; what the local backend emulates is in
+[subject-v1-local.md](subject-v1-local.md)). Contents: `fixtures/subject-v1-vectors.json` (the canonicalisation vectors of the design: `" Alice@Example.COM "`
 → exact `"Alice@Example.COM"`, fold `"alice@example.com"`; `"é"` → NFC `"é"`; `"\uD800"` → VALIDATION; `42` → `"42"`; `4.5` →
 VALIDATION) and adapter cases on what the edge observes: declare with `subjectField` and `subjectMode: 'pseudonym'`;
 append and read back shows the subject as appended; `ledger.subject` is `'pseudonym'` on reads; `$subject` and
@@ -251,8 +252,8 @@ subject (an index list by the subject field with `equals` finds both). Each case
 ## 9. Reference adapter (`adapters/reference/`)
 
 In-memory, for the emulator and for the suite's own tests. Clearly not production: no durability guarantee, no
-access control beyond the store allow-list, local keys only. It passes `bytes`, `core`, `ledger` and `proof-timing`;
-it has `subjectV1: false` until the subject contract is stable.
+access control beyond the store allow-list, local keys only. It passes `bytes`, `core`, `ledger`, `proof-timing` and
+`subject-v1` (`subjectV1: true`; see [subject-v1-local.md](subject-v1-local.md)).
 
 ### 9.1 Two layers: edge layer and local backend
 
@@ -266,14 +267,16 @@ backend behind a shared pure KV client package:
   `KVError` with the store-level status: `createStore({ id, format })`, `deleteStore`, `get`, `put`, `remove`,
   `increment`, `batchGet`, `transact(ops, { idempotencyKey })`, `query(options)` (one page), `declareIndex`,
   `dropIndex`, `lookup`, `count`, `declareLedger`, `dropLedger`, `append`, `ledgerStatus`, `ledgerProof`,
+  `shred(storeId, ledger, body)` and `subjectEntries(storeId, ledger, body)` (the platform's subject routes),
   `archiveNow(storeId)`, `publicKey()`, `injectFault({ op, when })`, `snapshot()` and `restore(snapshot)` (a JSON-safe
   copy of every store, index, ledger, idempotency record, archive and the clock offset; `storage` is an optional
   `{ load(): snapshot | null, save(snapshot) }` hook called at create and after each write).
 - The backend covers: formats (format 2 in full; format 1 accepted at create, with the format 1 query behaviour
   deferred), versions, indexes with build timers on the injected clock, TTL, transaction idempotency (24 h), list
   limits and budgets, ledgers with the hash chain, a simulated archive (5-minute periods, injected clock, archive-now),
-  a local P-256 signing key, AES-256-GCM sealing of ledger personal fields per subject key (the `$enc`, `iv`, `tag`
-  envelope of the byte layout; reads open them), secret values encrypted with a local AES-256-GCM key, and fault
+  a local P-256 signing key, the ledger subject contract version 1 (pseudonym and clear modes, subject references and
+  key generations, shreds with signed receipts) with AES-256-GCM sealing of personal fields per subject key (the
+  `$enc`, `iv`, `tag` envelope of the byte layout; reads open them), secret values encrypted with a local AES-256-GCM key, and fault
   injection.
 - The backend never imports the edge layer. The adapter is `buildKvStore(backendCalls, KVError)` plus `admin` and
   `control` mapped onto the backend.
@@ -398,5 +401,7 @@ current development surface, including the kvStore improvements, and subject-v1 
 - Out of scope for this repository (owner decision): rule, static and function vectors. Edge vectors live in
   another team's repository.
 - Format 1 cases (null/false on failure, legacy scan lists). The local backend accepts format 1 stores already.
-- `subject-v1` cases run only after the subject contract is released and the owner enables them.
-- Store upgrade, export, shred, verify reports: management surface, not edge.
+- `subject-v1` cases: on by default only after the subject contract is released and the owner enables them; until
+  then they need `--enable subject-v1`.
+- Store upgrade, export and verify reports, and shred cases: management surface, not edge. (The local backend
+  emulates the shred and the subject entries routes; no case uses them.)

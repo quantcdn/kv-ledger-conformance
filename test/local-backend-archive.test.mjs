@@ -150,7 +150,7 @@ test('the reference adapter exposes the archive: capabilities, proofPublicKey, a
   assert.equal(adapter.capabilities.proofTiming, true);
   assert.equal(adapter.capabilities.signedProofs, true);
   assert.equal(adapter.capabilities.advanceArchive, true);
-  assert.equal(adapter.capabilities.subjectV1, false);
+  assert.equal(adapter.capabilities.subjectV1, true);
   const { storeId } = await adapter.admin.createStore({ format: 2 });
   await adapter.admin.declareLedger(storeId, DEF);
   const r = await adapter.kvStore.append(storeId, 'audit', { a: 1 });

@@ -2,9 +2,43 @@
 
 ## Unreleased
 
+### 0.2.0
+
+Suite and `@quantcdn/edge-kv` 0.2.0. Minor: a new feature.
+
+- The local backend emulates the ledger subject contract, version 1, of the platform
+  ([docs/subject-v1-local.md](docs/subject-v1-local.md)). `declareLedger` takes `subjectMode` (`'pseudonym'` by
+  default, or `'clear'`) and `subjectCase` (`'exact'` by default, or `'fold'`) with a `subjectField`, and both enter
+  the hashed definition. In `pseudonym` mode the subject field stores a token and a sealed `$subject`; reads show the
+  value as appended, or `{ $shredded: true }` after a shred, and `ledger.subject` names the mode. Lists by index
+  `equals` and `where` find a subject by its live token. The subject id is canonicalised as
+  `fixtures/subject-v1-vectors.json` says. The texts of the subject errors are the platform's.
+- New backend calls `shred(storeId, ledger, { subjectId, reason, authority, requestedBy })` (shred entries, then the
+  key is destroyed, with a signed `kv-ledger-shred-receipt`) and `subjectEntries(storeId, ledger, body)`. They return
+  the bodies of the platform routes `POST …/ledgers/{name}/shred` and `POST …/ledgers/{name}/subject-entries`. The
+  reference adapter has them as `admin.shred` and `admin.subjectEntries`.
+- Index rules against ledgers, in both orders: a ledger collection takes plain indexes only (`LEDGER_INDEX_KIND`), an
+  index cannot use a personal field (`INDEX_FIELD_ENCRYPTED`) or sort by a subject field (`VALIDATION`), and an index
+  on the subject field of a pseudonym ledger must lie within its collection (`LEDGER_INDEX_KIND`).
+- An idempotency key used before its subject was erased is `VALIDATION` with the platform message.
+- Breaking for stored data: a ledger declared with a `subjectField` by 0.1.x has no `subjectMode`. It now refuses
+  appends and decrypted reads with `LEDGER_FORMAT_RETIRED`, as the platform does. Declare a new ledger.
+- The append reserved-field errors use the platform texts.
+- New read-only backend calls `ledgers(storeId)` (`[{ name, state, activeAfter?, definition }]`) and
+  `indexes(storeId)` (`[{ name, state, error?, definition }]`): states brought up to the clock, copies,
+  `STORE_NOT_FOUND` for an unknown store. Use them instead of reading `snapshot().stores`.
+- The reference adapter has `subjectV1: true` and passes the `subject-v1` cases (`--tags subject-v1 --enable
+  subject-v1`).
+- Storage hook: a write makes one copy of the snapshot (the one it saves), not two. A failed save goes back to
+  `load()`, the fresh snapshot of the transaction, or the snapshot last saved or loaded; the backend takes a copy
+  before a write only when there is no disk state yet.
+- Verifier: a purge receipt's `storeRecord.ledgers[].lockMode` is the ledger lockMode as declared (lowercase, as the
+  platform signs it); upper case is still accepted. Real receipts failed `storeRecord is malformed` before.
 - Verifier: a `keyId` matches a key when the ids are equal or when the KMS key id at the end of a key ARN is
   equal. The public-key route now names keys by the KMS key id (no account id or region); documents and digest
   signatures made before 2026-10-29 keep the key ARN. Step lines and `verify-signed` name the key id only.
+
+### 0.1.x
 
 - `@quantcdn/edge-kv` 0.1.1: an unknown option error says `Unknown <kind> option: <name>`, as the runtime does
   (was `<name> is not an option`). The ttl hint for expiry-like names is unchanged. `core/ttl/expiry-like-names`
